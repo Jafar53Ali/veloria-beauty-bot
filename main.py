@@ -5,6 +5,7 @@ import urllib.parse
 import os
 from flask import Flask
 from threading import Thread
+import time  # إضافة بسيطة لضمان التوقيت
 
 # --- إعداد سيرفر لاستقبال طلبات الـ Cron-job (Keep-alive) ---
 app = Flask('')
@@ -14,12 +15,13 @@ def home():
     return "I am alive! Veloria Beauty Bot is running."
 
 def run_flask():
-    # تم تعديل المنفذ ليكون 8080 بناءً على طلبك
+    # Render بيحدد المنفذ تلقائياً عبر متغير PORT أو نستخدم 8080 بناءً على طلبك
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run_flask)
+    t.daemon = True # تعديل لضمان استمرارية السيرفر مع البرنامج
     t.start()
 
 # 1. إعدادات البوت والمسؤولين
@@ -333,8 +335,19 @@ def display_product_from_db(message, item):
     try: bot.send_photo(message.chat.id, item[5], caption=cap, reply_markup=markup, parse_mode="Markdown")
     except: bot.send_message(message.chat.id, cap, reply_markup=markup, parse_mode="Markdown")
 
-# تشغيل السيرفر المساعد أولاً ثم البوت
+# --- التعديل الذكي لمنع Render من إغلاق البوت ---
 if __name__ == "__main__":
-    keep_alive() # بدء تشغيل Flask في Thread منفصل
+    # 1. تشغيل السيرفر المساعد أولاً لفتح المنفذ لـ Render
+    keep_alive() 
     print("Keep-alive server is running on port 8080...")
-    bot.polling(none_stop=True) # تشغيل البوت مع خاصية عدم التوقف عند الأخطاء البسيطة
+    
+    # 2. مهلة قصيرة لضمان استقرار السيرفر قبل بدء البوت
+    time.sleep(2)
+    
+    # 3. تشغيل البوت في حلقة (Loop) لضمان عدم توقفه نهائياً
+    while True:
+        try:
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
+        except Exception as e:
+            print(f"Error occurred: {e}. Restarting bot in 5 seconds...")
+            time.sleep(5)
