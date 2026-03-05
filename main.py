@@ -14,8 +14,8 @@ def home():
     return "I am alive! Veloria Beauty Bot is running."
 
 def run_flask():
-    # Render بيحدد المنفذ تلقائياً عبر متغير PORT
-    port = int(os.environ.get("PORT", 10000))
+    # تم تعديل المنفذ ليكون 8080 بناءً على طلبك
+    port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
@@ -336,5 +336,5 @@ def display_product_from_db(message, item):
 # تشغيل السيرفر المساعد أولاً ثم البوت
 if __name__ == "__main__":
     keep_alive() # بدء تشغيل Flask في Thread منفصل
-    print("Keep-alive server is running...")
+    print("Keep-alive server is running on port 8080...")
     bot.polling(none_stop=True) # تشغيل البوت مع خاصية عدم التوقف عند الأخطاء البسيطة
