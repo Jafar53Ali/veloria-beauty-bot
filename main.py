@@ -191,7 +191,7 @@ def back_home(message):
 @bot.message_handler(func=lambda message: message.text == "👨‍💻 مطور النظام")
 def developer_info(message):
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("💬 تواصل مع المطور", url="https://t.me/Veloria_Admin_Bot")) # استبدل بـ username بوتك
+    markup.add(types.InlineKeyboardButton("💬 تواصل مع المطور", url="@Gafar53_bot")) # استبدل بـ username بوتك
     bot.send_message(message.chat.id, "👨‍💻 تم تطوير هذا النظام لتوفير أفضل تجربة تسوق.\nيمكنك التواصل مع المطور عبر البوت الرسمي:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "✨ فحص نوع البشرة (الخبير الآلي)")
