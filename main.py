@@ -30,7 +30,6 @@ bot = telebot.TeleBot(API_TOKEN)
 DATABASE_URL = "postgresql://neondb_owner:npg_GVlwd8kbrTz6@ep-red-king-ai5otk5k.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
 ADMIN_IDS = [1426422446, 1112769561] 
-WHATSAPP_STAFF = ["249908787018", "249126335052", "249118739777"]
 
 user_carts = {} 
 user_states = {} 
@@ -63,7 +62,6 @@ def init_db():
                           (id SERIAL PRIMARY KEY, name TEXT, description TEXT, price INTEGER, availability TEXT, image_url TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS staff 
                           (id SERIAL PRIMARY KEY, name TEXT, contact TEXT, type TEXT)''')
-
 init_db()
 
 def is_admin(user_id):
@@ -86,7 +84,8 @@ def staff_management(message):
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
             types.InlineKeyboardButton("➕ إضافة موظف", callback_data="staff_add"),
-            types.InlineKeyboardButton("🗑️ حذف موظف", callback_data="staff_view_delete")
+            types.InlineKeyboardButton("🗑️ حذف موظف", callback_data="staff_view_delete"),
+            types.InlineKeyboardButton("✏️ تعديل موظف", callback_data="staff_view_edit")
         )
         bot.send_message(message.chat.id, "👥 إدارة فريق المبيعات:", reply_markup=markup)
 
@@ -96,12 +95,12 @@ def staff_callbacks(call):
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🟢 واتساب", callback_data="staff_type_wa"),
                    types.InlineKeyboardButton("🔵 تليجرام", callback_data="staff_type_tg"))
-        bot.edit_message_text("اختار نوع الموظف:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        bot.edit_message_text("اختار نوع الموظف الجديد:", call.message.chat.id, call.message.message_id, reply_markup=markup)
     
     elif call.data.startswith("staff_type_"):
         stype = "whatsapp" if "wa" in call.data else "telegram"
         temp_staff_data[call.message.chat.id] = {"type": stype}
-        msg = bot.send_message(call.message.chat.id, "أرسل بيانات الموظف (الاسم | المعرف أو الرقم):")
+        msg = bot.send_message(call.message.chat.id, "أرسل بيانات الموظف بالتنسيق التالي:\nالاسم | المعرف أو الرقم")
         bot.register_next_step_handler(msg, save_staff)
 
     elif call.data == "staff_view_delete":
@@ -113,8 +112,26 @@ def staff_callbacks(call):
             return
         markup = types.InlineKeyboardMarkup()
         for s in all_staff:
-            markup.add(types.InlineKeyboardButton(f"❌ حذف: {s[1]} ({s[2]})", callback_data=f"staff_del_{s[0]}"))
+            markup.add(types.InlineKeyboardButton(f"❌ حذف: {s[1]}", callback_data=f"staff_del_{s[0]}"))
         bot.edit_message_text("اختار الموظف لحذفه:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    elif call.data == "staff_view_edit":
+        with get_cursor() as cur:
+            cur.execute("SELECT id, name FROM staff")
+            all_staff = cur.fetchall()
+        if not all_staff:
+            bot.answer_callback_query(call.id, "لا يوجد موظفين لتعديلهم")
+            return
+        markup = types.InlineKeyboardMarkup()
+        for s in all_staff:
+            markup.add(types.InlineKeyboardButton(f"✏️ تعديل: {s[1]}", callback_data=f"staff_edit_{s[0]}"))
+        bot.edit_message_text("اختار الموظف لتعديل بياناته:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    elif call.data.startswith("staff_edit_"):
+        sid = call.data.split("_")[2]
+        temp_staff_data[call.message.chat.id] = {"id": sid}
+        msg = bot.send_message(call.message.chat.id, "أرسل البيانات الجديدة بالتنسيق:\nالاسم | الرقم | النوع(whatsapp/telegram)")
+        bot.register_next_step_handler(msg, update_staff_db)
 
     elif call.data.startswith("staff_del_"):
         sid = call.data.split("_")[2]
@@ -132,6 +149,16 @@ def save_staff(message):
         bot.send_message(message.chat.id, f"✅ تم إضافة الموظف {name} بنجاح!")
     except:
         bot.send_message(message.chat.id, "❌ خطأ! التنسيق: الاسم | الرقم")
+
+def update_staff_db(message):
+    try:
+        sid = temp_staff_data[message.chat.id]['id']
+        name, contact, stype = [i.strip() for i in message.text.split('|')]
+        with get_cursor() as cur:
+            cur.execute("UPDATE staff SET name=%s, contact=%s, type=%s WHERE id=%s", (name, contact, stype, sid))
+        bot.send_message(message.chat.id, "✅ تم تحديث بيانات الموظف بنجاح!")
+    except:
+        bot.send_message(message.chat.id, "❌ خطأ! التنسيق: الاسم | الرقم | النوع")
 
 # --- 4. الوظائف الأساسية ---
 
@@ -153,6 +180,44 @@ def show_main_menu(message):
 def back_home(message): 
     user_states[message.chat.id] = None
     show_main_menu(message)
+
+@bot.message_handler(func=lambda message: message.text == "👨‍💻 مطور النظام")
+def developer_info(message):
+    bot.send_message(message.chat.id, "👨‍💻 تم تطوير هذا النظام بواسطة المهندس المسؤول.\nللتواصل التقني: [أدخل وسيلة التواصل هنا]")
+
+@bot.message_handler(func=lambda message: message.text == "✨ فحص نوع البشرة (الخبير الآلي)")
+def skin_expert(message):
+    bot.send_message(message.chat.id, "⏳ جاري تحضير الخبير الآلي لفحص البشرة... هذه الميزة ستتوفر قريباً بشكل كامل.")
+
+@bot.message_handler(func=lambda message: message.text == "🔍 بحث عن منتج")
+def search_product_start(message):
+    user_states[message.chat.id] = "searching"
+    bot.send_message(message.chat.id, "🔍 أرسلي اسم المنتج الذي تبحثين عنه:")
+
+@bot.message_handler(func=lambda message: message.text == "🗑️ حذف منتج")
+def delete_product_start(message):
+    if is_admin(message.from_user.id):
+        with get_cursor() as cur:
+            cur.execute("SELECT name FROM products")
+            prods = cur.fetchall()
+        if not prods:
+            bot.send_message(message.chat.id, "المتجر فارغ")
+            return
+        markup = types.InlineKeyboardMarkup()
+        for p in prods:
+            markup.add(types.InlineKeyboardButton(f"❌ حذف {p[0]}", callback_data=f"pdel_{p[0]}"))
+        bot.send_message(message.chat.id, "اختار المنتج المراد حذفه:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == "✏️ تعديل منتج")
+def edit_product_start(message):
+    if is_admin(message.from_user.id):
+        with get_cursor() as cur:
+            cur.execute("SELECT name FROM products")
+            prods = cur.fetchall()
+        markup = types.InlineKeyboardMarkup()
+        for p in prods:
+            markup.add(types.InlineKeyboardButton(f"✏️ تعديل {p[0]}", callback_data=f"pedit_{p[0]}"))
+        bot.send_message(message.chat.id, "اختار المنتج لتعديله:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "🛍️ تصفح المنتجات")
 def list_products(message):
@@ -235,7 +300,6 @@ def handle_all_messages(message):
     chat_id = message.chat.id
     state = user_states.get(chat_id)
 
-    # معالجة إدخال رقم الهاتف وإظهار الموظفين فوراً
     if state == "waiting_phone" and message.text:
         phone = message.text
         order = temp_orders.get(chat_id)
@@ -246,11 +310,21 @@ def handle_all_messages(message):
                 except: continue
             bot.send_message(chat_id, "✅ تم تسجيل طلبك! الموظفون متاحون هنا لمتابعة طلبك:")
             user_carts[chat_id] = []
-            user_states[chat_id] = None # إنهاء الحالة للسماح للأزرار الأخرى بالعمل
-            contact_sales(message) # إظهار الموظفين فوراً
+            user_states[chat_id] = None 
+            contact_sales(message)
         return
 
-    # معالجة عرض تفاصيل المنتج عند الضغط على الزر
+    if state == "searching" and message.text:
+        with get_cursor() as cur:
+            cur.execute("SELECT * FROM products WHERE name ILIKE %s", (f"%{message.text}%",))
+            product = cur.fetchone()
+        if product:
+            display_product_from_db(message, product)
+        else:
+            bot.send_message(chat_id, "❌ عذراً، لم أجد منتجاً بهذا الاسم.")
+        user_states[chat_id] = None
+        return
+
     with get_cursor() as cursor:
         cursor.execute("SELECT * FROM products WHERE name = %s", (message.text,))
         product = cursor.fetchone()
@@ -292,12 +366,27 @@ def handle_general_callbacks(call):
             if chat_id not in user_carts: user_carts[chat_id] = []
             user_carts[chat_id].append({'name': p_name, 'price': price[0]})
             bot.answer_callback_query(call.id, f"✅ تمت إضافة {p_name}")
+            
+    elif call.data.startswith("pdel_"):
+        name = call.data.replace("pdel_", "")
+        with get_cursor() as cur:
+            cur.execute("DELETE FROM products WHERE name = %s", (name,))
+        bot.answer_callback_query(call.id, f"✅ تم حذف المنتج {name}")
+        bot.delete_message(chat_id, call.message.message_id)
+
+    elif call.data.startswith("pedit_"):
+        name = call.data.replace("pedit_", "")
+        temp_product_data[chat_id] = {"old_name": name}
+        msg = bot.send_message(chat_id, f"أرسلي البيانات الجديدة للمنتج {name}:\nالاسم | الوصف | السعر | الحالة")
+        bot.register_next_step_handler(msg, update_product_db)
+
     elif call.data.startswith("remove_"):
         idx = int(call.data.split("_")[1])
         if chat_id in user_carts and len(user_carts[chat_id]) > idx:
             user_carts[chat_id].pop(idx)
             bot.delete_message(chat_id, call.message.message_id)
             show_cart(call.message)
+
     elif call.data == "confirm_order":
         cart = user_carts.get(chat_id, [])
         if cart:
@@ -310,6 +399,17 @@ def handle_general_callbacks(call):
         bot.answer_callback_query(call.id)
     elif call.data.startswith("staff_"):
         staff_callbacks(call)
+
+def update_product_db(message):
+    try:
+        old_name = temp_product_data[message.chat.id]['old_name']
+        data = [i.strip() for i in message.text.split('|')]
+        with get_cursor() as cur:
+            cur.execute("UPDATE products SET name=%s, description=%s, price=%s, availability=%s WHERE name=%s", 
+                        (data[0], data[1], int(data[2]), data[3], old_name))
+        bot.send_message(message.chat.id, "✅ تم تحديث المنتج بنجاح!")
+    except:
+        bot.send_message(message.chat.id, "❌ خطأ في التعديل! تأكد من التنسيق.")
 
 if __name__ == "__main__":
     keep_alive() 
