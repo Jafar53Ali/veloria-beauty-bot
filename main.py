@@ -7,7 +7,7 @@ from flask import Flask
 from threading import Thread
 import time 
 
-# --- إعداد سيرفر Keep-alive لـ Render ---
+# --- إعداد سيرفر Keep-alive ---
 app = Flask('')
 
 @app.route('/')
@@ -29,7 +29,7 @@ bot = telebot.TeleBot(API_TOKEN)
 
 DATABASE_URL = "postgresql://neondb_owner:npg_GVlwd8kbrTz6@ep-red-king-ai5otk5k.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
-# المعرف الخاص بك والمعرفات الإضافية
+# المعرفات الأساسية (بما في ذلك معرفك)
 ADMIN_IDS = [1426422446, 1112769561] 
 
 user_carts = {} 
@@ -55,19 +55,10 @@ def get_cursor():
     except:
         return conn.cursor()
 
-# الدالة دي حتتأكد من وجود الجداول
-def init_db():
-    with get_cursor() as cursor:
-        cursor.execute('''CREATE TABLE IF NOT EXISTS products 
-                          (id SERIAL PRIMARY KEY, name TEXT, description TEXT, price INTEGER, availability TEXT, image_url TEXT)''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS staff 
-                          (id SERIAL PRIMARY KEY, name TEXT, contact TEXT, type TEXT, telegram_id BIGINT)''')
-init_db()
-
 def is_admin(user_id):
-    # الأدمن الأساسي أو أي موظف مضاف في جدول الـ staff
     if user_id in ADMIN_IDS:
         return True
+    # التحقق إذا كان الموظف لديه صلاحية أدمن من قاعدة البيانات
     with get_cursor() as cur:
         cur.execute("SELECT id FROM staff WHERE telegram_id = %s", (user_id,))
         return cur.fetchone() is not None
@@ -80,31 +71,31 @@ def admin_panel(message):
         markup.add("➕ إضافة منتج", "🗑️ حذف منتج")
         markup.add("✏️ تعديل منتج", "👥 إدارة الموظفين")
         markup.add("🔙 الرجوع للقائمة الرئيسية")
-        bot.send_message(message.chat.id, "🛠️ لوحة تحكم الإدارة والصلاحيات:", reply_markup=markup)
+        bot.send_message(message.chat.id, "🛠️ لوحة تحكم الإدارة:", reply_markup=markup)
 
-# --- نظام إدارة الموظفين (جديد) ---
+# --- نظام إدارة الموظفين ---
 @bot.message_handler(func=lambda message: message.text == "👥 إدارة الموظفين")
-def staff_management(message):
+def staff_mgmt(message):
     if is_admin(message.from_user.id):
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("➕ إضافة موظف جديد", callback_data="staff_add_start"))
-        markup.add(types.InlineKeyboardButton("✏️ تعديل / حذف موظف", callback_data="staff_list_edit"))
-        bot.send_message(message.chat.id, "إدارة فريق المبيعات:", reply_markup=markup)
+        markup.add(types.InlineKeyboardButton("➕ إضافة موظف مبيعات", callback_data="add_staff_start"))
+        markup.add(types.InlineKeyboardButton("📝 تعديل / حذف موظف", callback_data="edit_staff_list"))
+        bot.send_message(message.chat.id, "إدارة فريق العمل:", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data == "staff_add_start")
-def staff_add_type(call):
+@bot.callback_query_handler(func=lambda call: call.data == "add_staff_start")
+def choose_staff_type(call):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🟢 واتساب", callback_data="stype_whatsapp"),
                types.InlineKeyboardButton("🔵 تليجرام", callback_data="stype_telegram"))
-    bot.edit_message_text("اختار نوع الموظف:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text("اختار نوع موظف المبيعات:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("stype_"))
-def staff_ask_details(call):
+def ask_staff_info(call):
     stype = call.data.split("_")[1]
     temp_staff_data[call.message.chat.id] = {'type': stype}
-    user_states[call.message.chat.id] = "waiting_staff_info"
-    msg = "أرسل بيانات الموظف (الواتساب) بالتنسيق:\nالاسم | الرقم | معرف التليجرام (للحصول على صلاحية)" if stype == "whatsapp" else \
-          "أرسل بيانات الموظف (التليجرام) بالتنسيق:\nالاسم | المعرف (بدون @) | معرف التليجرام الرقمي"
+    user_states[call.message.chat.id] = "waiting_staff_data"
+    msg = "أرسلي بيانات الموظف (واتساب):\nالاسم | رقم الهاتف | المعرف الرقمي (لصلاحية الأدمن)" if stype == "whatsapp" else \
+          "أرسلي بيانات الموظف (تليجرام):\nالاسم | المعرف (بدون @) | المعرف الرقمي (لصلاحية الأدمن)"
     bot.send_message(call.message.chat.id, msg)
 
 # --- عرض المنتجات (4 في الصف) ---
@@ -116,33 +107,33 @@ def list_products(message):
     if not products:
         bot.send_message(message.chat.id, "المتجر فارغ.")
         return
-    markup = types.ReplyKeyboardMarkup(row_width=4, resize_keyboard=True) # التعديل لـ 4 منتجات
+    markup = types.ReplyKeyboardMarkup(row_width=4, resize_keyboard=True) # تم التعديل لـ 4
     buttons = [types.KeyboardButton(p[0]) for p in products]
     markup.add(*buttons)
     markup.add("🔙 الرجوع للقائمة الرئيسية")
-    bot.send_message(message.chat.id, "👇 اختاري منتجاً من القائمة:", reply_markup=markup)
+    bot.send_message(message.chat.id, "👇 اختاري منتجاً:", reply_markup=markup)
 
-# --- معالج الرسائل المطور ---
+# --- معالج الرسائل العام ---
 @bot.message_handler(content_types=['text', 'photo'])
 def handle_all_messages(message):
     chat_id = message.chat.id
     state = user_states.get(chat_id)
 
     # إضافة موظف
-    if state == "waiting_staff_info":
+    if state == "waiting_staff_data":
         try:
             parts = [i.strip() for i in message.text.split('|')]
-            s_data = temp_staff_data[chat_id]
+            s_type = temp_staff_data[chat_id]['type']
             with get_cursor() as cur:
-                cur.execute("INSERT INTO staff (name, contact, type, telegram_id) VALUES (%s, %s, %s, %s)",
-                            (parts[0], parts[1], s_data['type'], int(parts[2])))
+                cur.execute("INSERT INTO staff (name, contact, type, telegram_id) VALUES (%s,%s,%s,%s)", 
+                            (parts[0], parts[1], s_type, int(parts[2])))
             bot.send_message(chat_id, f"✅ تم إضافة الموظف {parts[0]} بنجاح!")
             user_states[chat_id] = None
         except:
-            bot.send_message(chat_id, "❌ خطأ في التنسيق. استخدم: الاسم | التواصل | المعرف الرقمي")
+            bot.send_message(chat_id, "❌ خطأ! التنسيق: الاسم | التواصل | المعرف الرقمي")
         return
 
-    # تعديل منتج (النظام القديم الذي تريده)
+    # تعديل منتج
     if state and state.startswith("waiting_edit_"):
         idx = int(state.split("_")[2])
         if idx == 5:
@@ -156,25 +147,25 @@ def handle_all_messages(message):
         user_states[chat_id] = None
         return
 
-    # إتمام الطلب ورقم الهاتف
+    # استلام رقم الهاتف وإتمام الطلب
     if state == "waiting_phone":
         phone = message.text
         order = temp_orders.get(chat_id)
         if order:
-            final_summary = f"طلب جديد:\n👤 الزبون: {order['customer']}\n📞 هاتف: {phone}\n📋 الطلبات:\n{order['details']}\n💰 المجموع: {order['total']} ج.س"
+            final_summary = f"طلب جديد من بوت ڤِلوريا:\n👤 الزبون: {order['customer']}\n📞 هاتف: {phone}\n📋 التفاصيل:\n{order['details']}\n💰 الإجمالي: {order['total']} ج.س"
             
             # إرسال للأدمن الأساسي
             for admin_id in ADMIN_IDS:
                 try: bot.send_message(admin_id, f"🔔 إشعار طلب:\n\n{final_summary}")
                 except: pass
             
-            # عرض الموظفين المتاحين للزبون ليختار أحدهم ويرسل له الطلب
-            show_staff_to_customer(message, final_summary)
+            # عرض الموظفين ليختار الزبون
+            show_staff_options(message, final_summary)
             user_carts[chat_id] = []
             user_states[chat_id] = None
         return
 
-    # الأوامر العادية
+    # الأوامر الأساسية
     if message.text == "🔙 الرجوع للقائمة الرئيسية": show_main_menu(message)
     elif message.text == "🛒 عرض السلة / إتمام الطلب": show_cart(message)
     elif message.text == "➕ إضافة منتج": ask_add(message)
@@ -182,7 +173,6 @@ def handle_all_messages(message):
     elif message.text == "✏️ تعديل منتج": ask_edit_name(message)
     elif message.text == "☎️ تواصل مع المبيعات": contact_sales(message)
     
-    # بحث سريع أو عرض منتج
     with get_cursor() as cursor:
         cursor.execute("SELECT * FROM products WHERE name = %s", (message.text,))
         product = cursor.fetchone()
@@ -190,7 +180,7 @@ def handle_all_messages(message):
 
 # --- دوال الموظفين والطلبات ---
 
-def show_staff_to_customer(message, summary):
+def show_staff_options(message, summary):
     with get_cursor() as cur:
         cur.execute("SELECT name, contact, type FROM staff")
         staff_list = cur.fetchall()
@@ -199,11 +189,11 @@ def show_staff_to_customer(message, summary):
     enc_text = urllib.parse.quote(summary)
     
     for s in staff_list:
-        label = f"إرسال الطلب لـ {s[0]} ({'واتساب' if s[2]=='whatsapp' else 'تليجرام'})"
+        btn_text = f"إرسال لـ {s[0]} ({'واتساب' if s[2]=='whatsapp' else 'تليجرام'})"
         url = f"https://wa.me/{s[1]}?text={enc_text}" if s[2]=='whatsapp' else f"https://t.me/{s[1]}?text={enc_text}"
-        markup.add(types.InlineKeyboardButton(label, url=url))
+        markup.add(types.InlineKeyboardButton(btn_text, url=url))
     
-    bot.send_message(message.chat.id, "✅ تم تجهيز طلبك! فضلاً اختاري الموظف لإرسال تفاصيل الطلب إليه عبر الواتساب أو التليجرام:", reply_markup=markup)
+    bot.send_message(message.chat.id, "✅ تم تسجيل بياناتك! اختاري الموظف المتاح لإرسال تفاصيل الطلب إليه:", reply_markup=markup)
 
 def contact_sales(message):
     with get_cursor() as cur:
@@ -212,15 +202,13 @@ def contact_sales(message):
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     for s in staff_list:
-        label = f"{'🟢' if s[2]=='whatsapp' else '🔵'} {s[0]}"
-        link = f"https://wa.me/{s[1]}" if s[2]=='whatsapp' else f"https://t.me/{s[1]}"
-        markup.add(types.InlineKeyboardButton(label, url=link))
+        icon = "🟢" if s[2] == "whatsapp" else "🔵"
+        link = f"https://wa.me/{s[1]}" if s[2] == "whatsapp" else f"https://t.me/{s[1]}"
+        markup.add(types.InlineKeyboardButton(f"{icon} {s[0]}", url=link))
     
-    bot.send_message(message.chat.id, "فريق المبيعات جاهز لخدمتك:", reply_markup=markup)
+    bot.send_message(message.chat.id, "فريق المبيعات متاح لخدمتك:", reply_markup=markup)
 
-# (باقي الدوال: ask_add, save_product_final, ask_delete, ask_edit_name, show_edit_options, start, show_main_menu, show_cart, display_product_from_db تظل كما هي في كودك الأصلي)
-
-# --- تكرار الدوال الأساسية للتأكيد ---
+# --- الدوال المساعدة ---
 def show_main_menu(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add("🛍️ تصفح المنتجات", "🔍 بحث عن منتج")
@@ -232,23 +220,25 @@ def show_main_menu(message):
 def ask_add(message):
     if is_admin(message.from_user.id):
         msg = bot.send_message(message.chat.id, "أرسل البيانات بالترتيب: الاسم | الوصف | السعر | الحالة")
-        bot.register_next_step_handler(msg, ask_for_photo)
+        bot.register_next_step_handler(msg, ask_for_photo_wrapper)
 
-def ask_for_photo(message):
+def ask_for_photo_wrapper(message):
     try:
         data = [i.strip() for i in message.text.split('|')]
         temp_product_data[message.chat.id] = data
-        bot.send_message(message.chat.id, f"✅ أرسل صورة المنتج:")
-        bot.register_next_step_handler(message, save_product_final)
-    except: bot.send_message(message.chat.id, "خطأ في التنسيق.")
+        msg = bot.send_message(message.chat.id, f"✅ أرسل صورة المنتج '{data[0]}':")
+        bot.register_next_step_handler(msg, save_product_final)
+    except: bot.send_message(message.chat.id, "❌ خطأ في التنسيق.")
 
 def save_product_final(message):
-    if message.content_type == 'photo':
-        data = temp_product_data.get(message.chat.id)
-        with get_cursor() as cursor:
-            cursor.execute("INSERT INTO products (name, description, price, availability, image_url) VALUES (%s,%s,%s,%s,%s)", 
-                           (data[0], data[1], int(data[2]), data[3], message.photo[-1].file_id))
-        bot.send_message(message.chat.id, "✅ تم الإضافة بنجاح!")
+    if message.content_type != 'photo':
+        bot.send_message(message.chat.id, "❌ يجب إرسال صورة!")
+        return
+    data = temp_product_data.get(message.chat.id)
+    with get_cursor() as cursor:
+        cursor.execute("INSERT INTO products (name, description, price, availability, image_url) VALUES (%s,%s,%s,%s,%s)", 
+                       (data[0], data[1], int(data[2]), data[3], message.photo[-1].file_id))
+    bot.send_message(message.chat.id, "✅ تم الإضافة بنجاح!")
 
 def display_product_from_db(message, item):
     cap = f"🌸 **المنتج:** {item[1]}\n\n📝 **الوصف:** {item[2]}\n💰 **السعر:** {item[3]} ج.س\n✅ **الحالة:** {item[4]}"
@@ -283,17 +273,20 @@ def handle_callbacks(call):
             user_carts[chat_id].append({'name': p_name, 'price': price[0]})
             bot.answer_callback_query(call.id, f"✅ تمت إضافة {p_name}")
     elif call.data == "confirm_order":
-        user_states[chat_id] = "waiting_phone"
-        bot.send_message(chat_id, "📱 أرسلي رقم هاتف الواتساب الخاص بكِ لإتمام الطلب:")
+        cart = user_carts.get(chat_id, [])
+        if cart:
+            total = sum(item['price'] for item in cart)
+            details = "\n".join([f"- {i['name']} ({i['price']})" for i in cart])
+            user = f"@{call.from_user.username}" if call.from_user.username else call.from_user.first_name
+            temp_orders[chat_id] = {"details": details, "total": total, "customer": user}
+            user_states[chat_id] = "waiting_phone"
+            bot.send_message(chat_id, "📱 أرسلي رقم هاتف الواتساب الخاص بكِ:")
 
-# --- تشغيل البوت ---
+# --- التشغيل النهائي ---
 if __name__ == "__main__":
     keep_alive() 
-    print("Veloria Bot is starting...")
     while True:
         try:
-            bot.remove_webhook()
-            bot.infinity_polling(timeout=20, long_polling_timeout=10)
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
-            print(f"Error: {e}")
             time.sleep(5)
