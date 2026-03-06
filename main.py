@@ -30,7 +30,6 @@ bot = telebot.TeleBot(API_TOKEN)
 DATABASE_URL = "postgresql://neondb_owner:npg_GVlwd8kbrTz6@ep-red-king-ai5otk5k.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
 ADMIN_IDS = [1426422446, 1112769561] 
-# تم تحويل الموظفين لقاعدة بيانات لاحقاً، لكن سنبقي القيم الافتراضية هنا للطوارئ
 WHATSAPP_STAFF = ["249908787018", "249126335052", "249118739777"]
 
 user_carts = {} 
@@ -62,7 +61,6 @@ def init_db():
     with get_cursor() as cursor:
         cursor.execute('''CREATE TABLE IF NOT EXISTS products 
                           (id SERIAL PRIMARY KEY, name TEXT, description TEXT, price INTEGER, availability TEXT, image_url TEXT)''')
-        # جدول الموظفين الجديد
         cursor.execute('''CREATE TABLE IF NOT EXISTS staff 
                           (id SERIAL PRIMARY KEY, name TEXT, contact TEXT, type TEXT)''')
 
@@ -140,6 +138,7 @@ def save_staff(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     user_carts[message.chat.id] = []
+    user_states[message.chat.id] = None
     show_main_menu(message)
 
 def show_main_menu(message):
@@ -151,10 +150,13 @@ def show_main_menu(message):
     bot.send_message(message.chat.id, "✨ مرحباً بكِ في ڤِلوريا بيوتي ✨", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "🔙 الرجوع للقائمة الرئيسية")
-def back_home(message): show_main_menu(message)
+def back_home(message): 
+    user_states[message.chat.id] = None
+    show_main_menu(message)
 
 @bot.message_handler(func=lambda message: message.text == "🛍️ تصفح المنتجات")
 def list_products(message):
+    user_states[message.chat.id] = "browsing"
     with get_cursor() as cursor:
         cursor.execute("SELECT name FROM products")
         products = cursor.fetchall()
@@ -163,20 +165,17 @@ def list_products(message):
         bot.send_message(message.chat.id, "المتجر فارغ.")
         return
 
-    # ترتيب ذكي للأزرار: الأسماء القصيرة (أقل من 10 حروف) 3 في الصف، الطويلة 1 أو 2
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     row = []
     for p in products:
         name = p[0]
         row.append(types.KeyboardButton(name))
-        # إذا الاسم قصير (أقل من 12 حرف) نضع 3 في الصف، لو طويل نكتفي بـ 2
         limit = 3 if len(name) < 12 else 2
         if len(row) >= limit:
             markup.add(*row)
             row = []
     if row: markup.add(*row)
     markup.add(types.KeyboardButton("🔙 الرجوع للقائمة الرئيسية"))
-    
     bot.send_message(message.chat.id, "👇 اختاري منتجاً من القائمة:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "☎️ تواصل مع المبيعات")
@@ -187,7 +186,6 @@ def contact_sales(message):
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     if not staff_list:
-        # قيم افتراضية في حال عدم وجود موظفين في القاعدة
         markup.add(types.InlineKeyboardButton("👩‍💼 تليجرام المبيعات", url="https://t.me/Julie_53"))
     else:
         for s in staff_list:
@@ -197,7 +195,6 @@ def contact_sales(message):
             
     bot.send_message(message.chat.id, "فريق المبيعات جاهز لخدمتك:", reply_markup=markup)
 
-# بقية الدوال (إضافة منتج، حذف منتج، سلة التسوق) تبقى كما هي بدون تغيير
 @bot.message_handler(func=lambda message: message.text == "➕ إضافة منتج")
 def ask_add(message):
     if is_admin(message.from_user.id):
@@ -232,13 +229,14 @@ def save_product_final(message):
 def cart_handler(message):
     show_cart(message)
 
-# معالج الرسائل العام
+# --- معالج الرسائل العام المطور ---
 @bot.message_handler(content_types=['text', 'photo'])
 def handle_all_messages(message):
     chat_id = message.chat.id
     state = user_states.get(chat_id)
 
-    if state == "waiting_phone":
+    # معالجة إدخال رقم الهاتف وإظهار الموظفين فوراً
+    if state == "waiting_phone" and message.text:
         phone = message.text
         order = temp_orders.get(chat_id)
         if order:
@@ -246,15 +244,19 @@ def handle_all_messages(message):
             for admin_id in ADMIN_IDS:
                 try: bot.send_message(admin_id, f"🔔 طلب جديد!\n\n{final_summary}")
                 except: continue
-            bot.send_message(chat_id, "✅ تم تسجيل طلبك بنجاح! فريق المبيعات سيتواصل معكِ.")
-            user_carts[chat_id] = []; user_states[chat_id] = None
+            bot.send_message(chat_id, "✅ تم تسجيل طلبك! الموظفون متاحون هنا لمتابعة طلبك:")
+            user_carts[chat_id] = []
+            user_states[chat_id] = None # إنهاء الحالة للسماح للأزرار الأخرى بالعمل
+            contact_sales(message) # إظهار الموظفين فوراً
         return
 
-    # فحص إذا كان النص هو اسم منتج لعرضه
+    # معالجة عرض تفاصيل المنتج عند الضغط على الزر
     with get_cursor() as cursor:
         cursor.execute("SELECT * FROM products WHERE name = %s", (message.text,))
         product = cursor.fetchone()
-    if product: display_product_from_db(message, product)
+    if product: 
+        display_product_from_db(message, product)
+        return
 
 def show_cart(message):
     cart = user_carts.get(message.chat.id, [])
@@ -297,8 +299,17 @@ def handle_general_callbacks(call):
             bot.delete_message(chat_id, call.message.message_id)
             show_cart(call.message)
     elif call.data == "confirm_order":
-        user_states[chat_id] = "waiting_phone"
-        bot.send_message(chat_id, "📱 أرسلي رقم هاتف الواتساب الخاص بكِ لإتمام الطلب:")
+        cart = user_carts.get(chat_id, [])
+        if cart:
+            total = sum(item['price'] for item in cart)
+            details = "\n".join([f"- {i['name']} ({i['price']})" for i in cart])
+            user = f"@{call.from_user.username}" if call.from_user.username else call.from_user.first_name
+            temp_orders[chat_id] = {"details": details, "total": total, "customer": user}
+            user_states[chat_id] = "waiting_phone"
+            bot.send_message(chat_id, "📱 أرسلي رقم هاتف الواتساب الخاص بكِ لإتمام الطلب:")
+        bot.answer_callback_query(call.id)
+    elif call.data.startswith("staff_"):
+        staff_callbacks(call)
 
 if __name__ == "__main__":
     keep_alive() 
