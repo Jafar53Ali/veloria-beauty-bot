@@ -226,7 +226,8 @@ def list_products(message):
         cursor.execute("SELECT name FROM products")
         products = cursor.fetchall()
     if not products: bot.send_message(message.chat.id, "المتجر فارغ."); return
-    markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
+    # تم التعديل هنا ليكون عرض الصف 4 منتجات
+    markup = types.ReplyKeyboardMarkup(row_width=4, resize_keyboard=True)
     for p in products: markup.add(types.KeyboardButton(p[0]))
     markup.add(types.KeyboardButton("🔙 الرجوع للقائمة الرئيسية"))
     bot.send_message(message.chat.id, "👇 اختاري منتجاً:", reply_markup=markup)
