@@ -117,7 +117,7 @@ def staff_callbacks(call):
 
     elif call.data == "staff_view_edit":
         with get_cursor() as cur:
-            cur.execute("SELECT id, name FROM staff")
+            cur.execute("SELECT id, name, contact, type FROM staff")
             all_staff = cur.fetchall()
         if not all_staff:
             bot.answer_callback_query(call.id, "لا يوجد موظفين لتعديلهم")
@@ -129,8 +129,11 @@ def staff_callbacks(call):
 
     elif call.data.startswith("staff_edit_"):
         sid = call.data.split("_")[2]
-        temp_staff_data[call.message.chat.id] = {"id": sid}
-        msg = bot.send_message(call.message.chat.id, "أرسل البيانات الجديدة بالتنسيق:\nالاسم | الرقم | النوع(whatsapp/telegram)")
+        with get_cursor() as cur:
+            cur.execute("SELECT name, contact, type FROM staff WHERE id=%s", (sid,))
+            s = cur.fetchone()
+        temp_staff_data[call.message.chat.id] = {"id": sid, "old_n": s[0], "old_c": s[1], "old_t": s[2]}
+        msg = bot.send_message(call.message.chat.id, f"تعديل الموظف ({s[0]}).\nأرسل البيانات الجديدة (الاسم | الرقم | النوع) أو اكتب '-' للبيانات التي لا تود تغييرها:")
         bot.register_next_step_handler(msg, update_staff_db)
 
     elif call.data.startswith("staff_del_"):
@@ -152,10 +155,14 @@ def save_staff(message):
 
 def update_staff_db(message):
     try:
-        sid = temp_staff_data[message.chat.id]['id']
-        name, contact, stype = [i.strip() for i in message.text.split('|')]
+        sd = temp_staff_data[message.chat.id]
+        parts = [i.strip() for i in message.text.split('|')]
+        new_name = parts[0] if parts[0] != '-' else sd['old_n']
+        new_contact = parts[1] if len(parts)>1 and parts[1] != '-' else sd['old_c']
+        new_type = parts[2] if len(parts)>2 and parts[2] != '-' else sd['old_t']
+        
         with get_cursor() as cur:
-            cur.execute("UPDATE staff SET name=%s, contact=%s, type=%s WHERE id=%s", (name, contact, stype, sid))
+            cur.execute("UPDATE staff SET name=%s, contact=%s, type=%s WHERE id=%s", (new_name, new_contact, new_type, sd['id']))
         bot.send_message(message.chat.id, "✅ تم تحديث بيانات الموظف بنجاح!")
     except:
         bot.send_message(message.chat.id, "❌ خطأ! التنسيق: الاسم | الرقم | النوع")
@@ -183,7 +190,9 @@ def back_home(message):
 
 @bot.message_handler(func=lambda message: message.text == "👨‍💻 مطور النظام")
 def developer_info(message):
-    bot.send_message(message.chat.id, "👨‍💻 تم تطوير هذا النظام بواسطة المهندس المسؤول.\nللتواصل التقني: [أدخل وسيلة التواصل هنا]")
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("💬 تواصل مع المطور", url="https://t.me/Veloria_Admin_Bot")) # استبدل بـ username بوتك
+    bot.send_message(message.chat.id, "👨‍💻 تم تطوير هذا النظام لتوفير أفضل تجربة تسوق.\nيمكنك التواصل مع المطور عبر البوت الرسمي:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "✨ فحص نوع البشرة (الخبير الآلي)")
 def skin_expert(message):
@@ -212,7 +221,7 @@ def delete_product_start(message):
 def edit_product_start(message):
     if is_admin(message.from_user.id):
         with get_cursor() as cur:
-            cur.execute("SELECT name FROM products")
+            cur.execute("SELECT name, description, price, availability FROM products")
             prods = cur.fetchall()
         markup = types.InlineKeyboardMarkup()
         for p in prods:
@@ -250,15 +259,30 @@ def contact_sales(message):
         staff_list = cur.fetchall()
     
     markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    # جلب تفاصيل الطلب إذا وجد
+    order = temp_orders.get(message.chat.id)
+    msg_text = "فريق المبيعات جاهز لخدمتك:"
+    
+    whatsapp_text = ""
+    if order:
+        whatsapp_text = f"مرحباً، أود إتمام طلبي:\n👤 الزبون: {order['customer']}\n📞 الهاتف: {order['phone']}\n📋 المنتجات:\n{order['details']}\n💰 الإجمالي: {order['total']} ج.س"
+        encoded_text = urllib.parse.quote(whatsapp_text)
+        msg_text = "✨ تم تجهيز تفاصيل طلبك! اختاري موظفاً لإرسال الطلب إليه عبر واتساب:"
+
     if not staff_list:
         markup.add(types.InlineKeyboardButton("👩‍💼 تليجرام المبيعات", url="https://t.me/Julie_53"))
     else:
         for s in staff_list:
             label = f"{'🟢' if s[2]=='whatsapp' else '🔵'} {s[0]}"
-            link = f"https://wa.me/{s[1]}" if s[2]=='whatsapp' else f"https://t.me/{s[1].replace('@','')}"
+            if s[2] == 'whatsapp':
+                # الرابط يدعم إرسال النص التلقائي
+                link = f"https://wa.me/{s[1]}?text={encoded_text}" if order else f"https://wa.me/{s[1]}"
+            else:
+                link = f"https://t.me/{s[1].replace('@','')}"
             markup.add(types.InlineKeyboardButton(label, url=link))
             
-    bot.send_message(message.chat.id, "فريق المبيعات جاهز لخدمتك:", reply_markup=markup)
+    bot.send_message(message.chat.id, msg_text, reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "➕ إضافة منتج")
 def ask_add(message):
@@ -304,14 +328,15 @@ def handle_all_messages(message):
         phone = message.text
         order = temp_orders.get(chat_id)
         if order:
+            order['phone'] = phone # حفظ الرقم في بيانات الطلب
             final_summary = f"طلب جديد:\n👤 الزبون: {order['customer']}\n📞 هاتف: {phone}\n📋 الطلبات:\n{order['details']}\n💰 المجموع: {order['total']} ج.س"
             for admin_id in ADMIN_IDS:
                 try: bot.send_message(admin_id, f"🔔 طلب جديد!\n\n{final_summary}")
                 except: continue
-            bot.send_message(chat_id, "✅ تم تسجيل طلبك! الموظفون متاحون هنا لمتابعة طلبك:")
+            
             user_carts[chat_id] = []
             user_states[chat_id] = None 
-            contact_sales(message)
+            contact_sales(message) # عرض الموظفين مع رابط الواتساب الجاهز
         return
 
     if state == "searching" and message.text:
@@ -376,8 +401,11 @@ def handle_general_callbacks(call):
 
     elif call.data.startswith("pedit_"):
         name = call.data.replace("pedit_", "")
-        temp_product_data[chat_id] = {"old_name": name}
-        msg = bot.send_message(chat_id, f"أرسلي البيانات الجديدة للمنتج {name}:\nالاسم | الوصف | السعر | الحالة")
+        with get_cursor() as cur:
+            cur.execute("SELECT name, description, price, availability FROM products WHERE name=%s", (name,))
+            p = cur.fetchone()
+        temp_product_data[chat_id] = {"old_name": name, "old_desc": p[1], "old_price": p[2], "old_avail": p[3]}
+        msg = bot.send_message(chat_id, f"تعديل المنتج ({name}).\nأرسل البيانات الجديدة (الاسم | الوصف | السعر | الحالة) أو اكتب '-' للبيانات التي لا تود تغييرها:")
         bot.register_next_step_handler(msg, update_product_db)
 
     elif call.data.startswith("remove_"):
@@ -402,11 +430,17 @@ def handle_general_callbacks(call):
 
 def update_product_db(message):
     try:
-        old_name = temp_product_data[message.chat.id]['old_name']
-        data = [i.strip() for i in message.text.split('|')]
+        pd = temp_product_data[message.chat.id]
+        parts = [i.strip() for i in message.text.split('|')]
+        # إذا أدخل '-' نستخدم القيمة القديمة
+        new_name = parts[0] if parts[0] != '-' else pd['old_name']
+        new_desc = parts[1] if len(parts)>1 and parts[1] != '-' else pd['old_desc']
+        new_price = int(parts[2]) if len(parts)>2 and parts[2] != '-' else pd['old_price']
+        new_avail = parts[3] if len(parts)>3 and parts[3] != '-' else pd['old_avail']
+        
         with get_cursor() as cur:
             cur.execute("UPDATE products SET name=%s, description=%s, price=%s, availability=%s WHERE name=%s", 
-                        (data[0], data[1], int(data[2]), data[3], old_name))
+                        (new_name, new_desc, new_price, new_avail, pd['old_name']))
         bot.send_message(message.chat.id, "✅ تم تحديث المنتج بنجاح!")
     except:
         bot.send_message(message.chat.id, "❌ خطأ في التعديل! تأكد من التنسيق.")
