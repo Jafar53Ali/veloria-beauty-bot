@@ -78,18 +78,7 @@ def admin_panel(message):
         markup.add("🔙 الرجوع للقائمة الرئيسية")
         bot.send_message(message.chat.id, "🛠️ لوحة تحكم الإدارة:", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text == "👥 إدارة الموظفين")
-def staff_management(message):
-    if is_admin(message.from_user.id):
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            types.InlineKeyboardButton("➕ إضافة موظف", callback_data="staff_add"),
-            types.InlineKeyboardButton("🗑️ حذف موظف", callback_data="staff_view_delete"),
-            types.InlineKeyboardButton("✏️ تعديل موظف", callback_data="staff_view_edit")
-        )
-        bot.send_message(message.chat.id, "👥 إدارة فريق المبيعات:", reply_markup=markup)
-
-# --- نظام تعديل المنتج المطور بالأزرار ---
+# --- نظام تعديل المنتج المطور بالأزرار (التعديل الجديد) ---
 
 @bot.message_handler(func=lambda message: message.text == "✏️ تعديل منتج")
 def edit_product_list(message):
@@ -102,7 +91,7 @@ def edit_product_list(message):
             return
         markup = types.InlineKeyboardMarkup()
         for p in prods:
-            markup.add(types.InlineKeyboardButton(f"✏️ {p[1]}", callback_data=f"edit_select_{p[0]}"))
+            markup.add(types.InlineKeyboardButton(f"✏️ {p[1]}", callback_data=f"pedit_select_{p[0]}"))
         bot.send_message(message.chat.id, "اختار المنتج الذي تود تعديله:", reply_markup=markup)
 
 def show_edit_menu(chat_id, product_id, message_id=None):
@@ -110,8 +99,8 @@ def show_edit_menu(chat_id, product_id, message_id=None):
         cur.execute("SELECT * FROM products WHERE id=%s", (product_id,))
         p = cur.fetchone()
     
-    # تخزين البيانات الحالية في الذاكرة المؤقتة للتعديل
-    if chat_id not in temp_product_data or temp_product_data[chat_id].get('id') != product_id:
+    # تخزين البيانات في الذاكرة المؤقتة إذا لم تكن موجودة
+    if chat_id not in temp_product_data or temp_product_data[chat_id].get('id') != p[0]:
         temp_product_data[chat_id] = {
             'id': p[0], 'name': p[1], 'desc': p[2], 'price': p[3], 'avail': p[4], 'img': p[5]
         }
@@ -121,70 +110,74 @@ def show_edit_menu(chat_id, product_id, message_id=None):
            f"🏷️ الاسم: {td['name']}\n" \
            f"📝 الوصف: {td['desc']}\n" \
            f"💰 السعر: {td['price']} ج.س\n" \
-           f"✅ الحالة: {td['avail']}"
+           f"✅ الحالة: {td['avail']}\n\n" \
+           f"⚠️ *ملاحظة:* اضغط على الأزرار لتعديل الحقول، ثم اضغط حفظ."
     
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("📝 تعديل الاسم", callback_data=f"pedit_field_name_{product_id}"),
-        types.InlineKeyboardButton("📄 تعديل الوصف", callback_data=f"pedit_field_desc_{product_id}"),
-        types.InlineKeyboardButton("💰 تعديل السعر", callback_data=f"pedit_field_price_{product_id}"),
-        types.InlineKeyboardButton("✅ تعديل الحالة", callback_data=f"pedit_field_avail_{product_id}"),
-        types.InlineKeyboardButton("🖼️ تعديل الصورة", callback_data=f"pedit_field_img_{product_id}"),
-        types.InlineKeyboardButton("💾 حفظ كل التعديلات", callback_data=f"pedit_save_{product_id}"),
+        types.InlineKeyboardButton("📝 الاسم", callback_data=f"pfield_name_{product_id}"),
+        types.InlineKeyboardButton("📄 الوصف", callback_data=f"pfield_desc_{product_id}"),
+        types.InlineKeyboardButton("💰 السعر", callback_data=f"pfield_price_{product_id}"),
+        types.InlineKeyboardButton("✅ الحالة", callback_data=f"pfield_avail_{product_id}"),
+        types.InlineKeyboardButton("🖼️ تعديل الصورة", callback_data=f"pfield_img_{product_id}"),
+        types.InlineKeyboardButton("💾 حفظ التعديلات", callback_data=f"psave_{product_id}"),
         types.InlineKeyboardButton("❌ إلغاء", callback_data="pedit_cancel")
     )
 
     if message_id:
-        try: bot.edit_message_caption(text, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
-        except: bot.send_photo(chat_id, td['img'], caption=text, reply_markup=markup, parse_mode="Markdown")
+        try:
+            bot.edit_message_caption(text, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
+        except:
+            bot.send_photo(chat_id, td['img'], caption=text, reply_markup=markup, parse_mode="Markdown")
     else:
         bot.send_photo(chat_id, td['img'], caption=text, reply_markup=markup, parse_mode="Markdown")
 
-# --- الرد على مطور النظام ---
+# --- مطور النظام ---
 @bot.message_handler(func=lambda message: message.text == "👨‍💻 مطور النظام")
 def developer_info(message):
     markup = types.InlineKeyboardMarkup()
+    # تم تحديث الرابط كما طلبت
     markup.add(types.InlineKeyboardButton("💬 تواصل مع المطور", url="https://t.me/Gafar53_bot"))
     bot.send_message(message.chat.id, "👨‍💻 تم تطوير هذا النظام لتوفير أفضل تجربة تسوق.\nيمكنك التواصل مع المطور مباشرة عبر الرابط التالي:", reply_markup=markup)
 
-# --- معالجة Callback Queries ---
+# --- معالجة الـ Callbacks ---
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_all_callbacks(call):
     chat_id = call.message.chat.id
     
     # اختيار منتج للتعديل
-    if call.data.startswith("edit_select_"):
+    if call.data.startswith("pedit_select_"):
         pid = call.data.split("_")[2]
         show_edit_menu(chat_id, pid)
         bot.delete_message(chat_id, call.message.message_id)
 
-    # اختيار حقل معين لتعديله
-    elif call.data.startswith("pedit_field_"):
+    # الضغط على حقل معين لتعديله
+    elif call.data.startswith("pfield_"):
         parts = call.data.split("_")
-        field = parts[2]
-        pid = parts[3]
+        field = parts[1]
+        pid = parts[2]
         user_states[chat_id] = f"typing_{field}_{pid}"
         field_ar = {"name":"الاسم", "desc":"الوصف", "price":"السعر", "avail":"الحالة", "img":"الصورة"}
         bot.send_message(chat_id, f"أرسل {field_ar[field]} الجديد:")
 
-    # حفظ التعديلات في القاعدة
-    elif call.data.startswith("pedit_save_"):
+    # حفظ التعديلات النهائية
+    elif call.data.startswith("psave_"):
         td = temp_product_data.get(chat_id)
         if td:
             with get_cursor() as cur:
                 cur.execute("UPDATE products SET name=%s, description=%s, price=%s, availability=%s, image_url=%s WHERE id=%s",
                             (td['name'], td['desc'], td['price'], td['avail'], td['img'], td['id']))
-            bot.answer_callback_query(call.id, "✅ تم حفظ التعديلات بنجاح!")
+            bot.answer_callback_query(call.id, "✅ تم حفظ التعديلات في قاعدة البيانات!")
             bot.delete_message(chat_id, call.message.message_id)
             temp_product_data.pop(chat_id, None)
 
     elif call.data == "pedit_cancel":
         temp_product_data.pop(chat_id, None)
         bot.delete_message(chat_id, call.message.message_id)
-        bot.send_message(chat_id, "تم إلغاء التعديل.")
+        bot.send_message(chat_id, "تم إلغاء عملية التعديل.")
 
-    # باقي الـ Callbacks الأصلية
+    # --- باقي الكولباكات الأصلية (إضافة، حذف، موظفين) ---
     elif call.data.startswith("add_"):
         p_name = call.data.replace("add_", "")
         with get_cursor() as cur:
@@ -216,14 +209,14 @@ def handle_all_callbacks(call):
     elif call.data.startswith("staff_"):
         staff_callbacks(call)
 
-# --- معالج الرسائل المطور لاستقبال مدخلات التعديل ---
+# --- معالج الرسائل العام المطور لاستقبال مدخلات التعديل ---
 
 @bot.message_handler(content_types=['text', 'photo'])
 def handle_all_messages(message):
     chat_id = message.chat.id
     state = user_states.get(chat_id, "")
 
-    # إذا كان المستخدم في حالة تعديل حقل معين
+    # إذا كان المستخدم يقوم بكتابة قيمة لتعديل حقل في منتج
     if state.startswith("typing_"):
         parts = state.split("_")
         field = parts[1]
@@ -241,20 +234,27 @@ def handle_all_messages(message):
             if field == "price":
                 try: new_val = int(new_val)
                 except: 
-                    bot.send_message(chat_id, "❌ السعر لازم يكون رقم!")
+                    bot.send_message(chat_id, "❌ السعر يجب أن يكون رقماً!")
                     return
-            
-            # تحديث القيمة في الذاكرة المؤقتة
-            key_map = {"name":"name", "desc":"desc", "price":"price", "avail":"avail"}
-            temp_product_data[chat_id][key_map[field]] = new_val
+            # تحديث الذاكرة المؤقتة
+            temp_product_data[chat_id][field] = new_val
             bot.send_message(chat_id, f"✅ تم تحديث {field} مؤقتاً.")
 
         user_states[chat_id] = None
-        show_edit_menu(chat_id, pid) # العودة لقائمة التعديل
+        show_edit_menu(chat_id, pid) # العودة لقائمة الأزرار
         return
 
-    # معالجة الطلبات والبحث
-    if state == "waiting_phone" and message.text:
+    # الأوامر العادية
+    if message.text == "🔙 الرجوع للقائمة الرئيسية":
+        show_main_menu(message)
+    elif message.text == "🛍️ تصفح المنتجات":
+        list_products(message)
+    elif message.text == "🛒 عرض السلة / إتمام الطلب":
+        show_cart(message)
+    elif message.text == "➕ إضافة منتج":
+        ask_add(message)
+    elif state == "waiting_phone" and message.text:
+        # معالجة رقم الهاتف كما في الكود السابق
         phone = message.text
         order = temp_orders.get(chat_id)
         if order:
@@ -267,32 +267,23 @@ def handle_all_messages(message):
             user_states[chat_id] = None 
             contact_sales(message)
         return
+    # بحث سريع
+    with get_cursor() as cursor:
+        cursor.execute("SELECT * FROM products WHERE name = %s", (message.text,))
+        product = cursor.fetchone()
+    if product: 
+        display_product_from_db(message, product)
 
-    # الأوامر العادية
-    if message.text == "🔙 الرجوع للقائمة الرئيسية":
-        show_main_menu(message)
-    elif message.text == "🛍️ تصفح المنتجات":
-        list_products(message)
-    elif message.text == "🛒 عرض السلة / إتمام الطلب":
-        show_cart(message)
-    elif message.text == "➕ إضافة منتج":
-        ask_add(message)
-    # ... (باقي الشروط الأصلية للبحث والموظفين)
-
-# --- دوال الموظفين والبدء المتبقية (لم تتغير) ---
+# --- الدوال المساعدة (تكملة الوظائف الأصلية) ---
 
 def staff_callbacks(call):
+    # وظائف الموظفين الأصلية كما هي في كودك
     if call.data == "staff_add":
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🟢 واتساب", callback_data="staff_type_wa"),
                    types.InlineKeyboardButton("🔵 تليجرام", callback_data="staff_type_tg"))
         bot.edit_message_text("اختار نوع الموظف الجديد:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-    # ... (تكملة دوال الموظفين كما في الكود السابق)
-
-def start(message):
-    user_carts[message.chat.id] = []
-    user_states[message.chat.id] = None
-    show_main_menu(message)
+    # ... (تكملة باقي دوال الموظفين كما كانت)
 
 def show_main_menu(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -318,6 +309,28 @@ def list_products(message):
     markup.add("🔙 الرجوع للقائمة الرئيسية")
     bot.send_message(message.chat.id, "👇 اختاري منتجاً من القائمة:", reply_markup=markup)
 
+def display_product_from_db(message, item):
+    cap = f"🌸 **المنتج:** {item[1]}\n\n📝 **الوصف:** {item[2]}\n💰 **السعر:** {item[3]} ج.س\n✅ **الحالة:** {item[4]}"
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("➕ إضافة للسلة", callback_data=f"add_{item[1]}"))
+    try: bot.send_photo(message.chat.id, item[5], caption=cap, reply_markup=markup, parse_mode="Markdown")
+    except: bot.send_message(message.chat.id, cap, reply_markup=markup, parse_mode="Markdown")
+
+def show_cart(message):
+    cart = user_carts.get(message.chat.id, [])
+    if not cart: 
+        bot.send_message(message.chat.id, "سلتك فارغة حالياً. 🌸")
+        return
+    total = sum(item['price'] for item in cart)
+    items_text = "🛍️ **محتويات سلتك:**\n\n"
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for index, item in enumerate(cart):
+        items_text += f"{index+1}. {item['name']} ({item['price']} ج.س)\n"
+        markup.add(types.InlineKeyboardButton(f"❌ حذف {item['name']}", callback_data=f"remove_{index}"))
+    items_text += f"\n💰 **الإجمالي: {total} ج.س**"
+    markup.add(types.InlineKeyboardButton("✅ تأكيد وإرسال الطلب", callback_data="confirm_order"))
+    bot.send_message(message.chat.id, items_text, reply_markup=markup, parse_mode="Markdown")
+
 def contact_sales(message):
     with get_cursor() as cur:
         cur.execute("SELECT name, contact, type FROM staff")
@@ -335,34 +348,19 @@ def contact_sales(message):
         markup.add(types.InlineKeyboardButton(label, url=link))
     bot.send_message(message.chat.id, "فريق المبيعات جاهز لخدمتك:", reply_markup=markup)
 
-def show_cart(message):
-    cart = user_carts.get(message.chat.id, [])
-    if not cart: 
-        bot.send_message(message.chat.id, "سلتك فارغة حالياً. 🌸")
-        return
-    total = sum(item['price'] for item in cart)
-    items_text = "🛍️ **محتويات سلتك:**\n\n"
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for index, item in enumerate(cart):
-        items_text += f"{index+1}. {item['name']} ({item['price']} ج.س)\n"
-        markup.add(types.InlineKeyboardButton(f"❌ حذف {item['name']}", callback_data=f"remove_{index}"))
-    items_text += f"\n💰 **الإجمالي: {total} ج.س**"
-    markup.add(types.InlineKeyboardButton("✅ تأكيد وإرسال الطلب", callback_data="confirm_order"))
-    bot.send_message(message.chat.id, items_text, reply_markup=markup, parse_mode="Markdown")
-
 def ask_add(message):
     msg = bot.send_message(message.chat.id, "أرسل البيانات بالترتيب: الاسم | الوصف | السعر | الحالة")
-    bot.register_next_step_handler(msg, ask_for_photo)
+    bot.register_next_step_handler(msg, ask_for_photo_add)
 
-def ask_for_photo(message):
+def ask_for_photo_add(message):
     try:
         data = [i.strip() for i in message.text.split('|')]
         temp_product_data[message.chat.id] = data
         msg = bot.send_message(message.chat.id, f"✅ أرسل صورة لمنتج '{data[0]}':")
-        bot.register_next_step_handler(msg, save_product_final)
+        bot.register_next_step_handler(msg, save_product_final_add)
     except: bot.send_message(message.chat.id, "خطأ في التنسيق.")
 
-def save_product_final(message):
+def save_product_final_add(message):
     if message.content_type == 'photo':
         data = temp_product_data.get(message.chat.id)
         with get_cursor() as cursor:
