@@ -150,7 +150,7 @@ def show_edit_options(message):
         item = cursor.fetchone()
     if item:
         temp_product_data[message.chat.id] = list(item)
-        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup = types.InlineKeyboardMarkup(row_width=4)
         markup.add(
             types.InlineKeyboardButton("🏷️ الاسم", callback_data="edit_val_1"),
             types.InlineKeyboardButton("📝 الوصف", callback_data="edit_val_2"),
