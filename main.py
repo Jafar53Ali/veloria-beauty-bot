@@ -29,26 +29,10 @@ bot = telebot.TeleBot(API_TOKEN)
 
 DATABASE_URL = "postgresql://neondb_owner:npg_GVlwd8kbrTz6@ep-red-king-ai5otk5k.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
-# قائمة معرفات الأدمنية الأساسيين
 ADMIN_IDS = [8764366152, 1112769561, 8222606329] 
-
-# 💡 ضعي هنا أرقام الـ ID الخاصة بالموظفات (Julie, Ryanaa, Trteel) 
-# لازم تجيبوها من @userinfobot عشان الإشعارات توصلهم في الخاص
-STAFF_CHAT_IDS = [
-    # مثال: 12345678, 98765432
-]
-
-# قائمة موظفي الواتساب
-WHATSAPP_STAFF = [
-    "249111327679", "249126335052", "249118739777", 
-    "", "", "", "", "", "", "", "", "", ""          
-]
-
-# قائمة موظفي التليجرام
-TELEGRAM_STAFF = [
-    "Julie_53",                                     
-    "Ryanaa_53", "Trteel_53", "", "", "", "", "", "", "", "" 
-]
+STAFF_CHAT_IDS = []
+WHATSAPP_STAFF = ["249111327679", "249126335052", "249118739777", "", "", "", "", "", "", "", "", "", ""]
+TELEGRAM_STAFF = ["Julie_53", "Ryanaa_53", "Trteel_53", "", "", "", "", "", "", "", ""]
 
 user_carts = {} 
 user_states = {} 
@@ -92,7 +76,7 @@ def is_admin(user_id, username=None):
             return True
     return False
 
-# --- لوحة التحكم ---
+# --- لوحة التحكم ووظائف الإدارة (نفس الكود السابق) ---
 @bot.message_handler(func=lambda message: message.text == "⚙️ لوحة التحكم")
 def admin_panel(message):
     if is_admin(message.from_user.id, message.from_user.username):
@@ -250,12 +234,18 @@ def list_products(message):
     markup.row(types.KeyboardButton("🔙 الرجوع للقائمة الرئيسية"))
     bot.send_message(message.chat.id, "👇 اختاري منتجاً:", reply_markup=markup)
 
-# --- معالج الرسائل العام والطلبات ---
+@bot.message_handler(func=lambda message: message.text == "🔍 بحث عن منتج")
+def search_prompt(message):
+    user_states[message.chat.id] = "searching"
+    bot.send_message(message.chat.id, "🔎 أرسلي 3 حروف على الأقل للبحث في الاسم أو الوصف:")
+
+# --- 🚀 تطوير آلية البحث في معالج الرسائل العام ---
 @bot.message_handler(content_types=['text', 'photo'])
 def handle_all_messages(message):
     chat_id = message.chat.id
     state = user_states.get(chat_id)
 
+    # معالجة تعديلات الأدمن
     if state and state.startswith("waiting_edit_"):
         idx = int(state.split("_")[2])
         if idx == 5:
@@ -269,20 +259,16 @@ def handle_all_messages(message):
         user_states[chat_id] = None
         return
 
+    # معالجة استلام رقم الهاتف للطلب
     if state == "waiting_phone":
         phone = message.text
         order = temp_orders.get(chat_id)
         if order:
-            # شكل الرسالة اللي حتظهر للموظفين
             final_summary = f"🔔 طلب جديد من البوت!\n\n👤 الزبون: {order['customer']}\n📞 هاتف: {phone}\n📋 الطلبات:\n{order['details']}\n💰 المجموع: {order['total']} ج.س"
-            
-            # 🚀 إرسال الإشعار لجميع الأدمنية والموظفين المسجلين في قائمة STAFF_CHAT_IDS
             all_receivers = set(ADMIN_IDS + STAFF_CHAT_IDS)
             for receiver_id in all_receivers:
-                try: 
-                    bot.send_message(receiver_id, final_summary)
-                except Exception as e: 
-                    print(f"Could not send to {receiver_id}: {e}")
+                try: bot.send_message(receiver_id, final_summary)
+                except Exception as e: print(f"Could not send to {receiver_id}: {e}")
             
             enc = urllib.parse.quote(final_summary)
             markup = types.InlineKeyboardMarkup(row_width=1)
@@ -293,21 +279,37 @@ def handle_all_messages(message):
             user_carts[chat_id] = []; user_states[chat_id] = None
         return
 
+    # 🔍 تطوير آلية البحث الذكي (الاسم والوصف)
     if state == "searching":
         query = message.text.lower()
+        if len(query) < 3:
+            bot.send_message(chat_id, "⚠️ الرجاء إدخال 3 حروف على الأقل للبحث.")
+            return
+
         with get_cursor() as cursor:
-            cursor.execute("SELECT * FROM products WHERE LOWER(name) LIKE %s", ('%' + query + '%',))
+            # البحث في الاسم أو الوصف (LIKE %query%)
+            cursor.execute("""
+                SELECT * FROM products 
+                WHERE LOWER(name) LIKE %s OR LOWER(description) LIKE %s
+            """, ('%' + query + '%', '%' + query + '%'))
             items = cursor.fetchall()
+
         if items:
-            for item in items: display_product_from_db(message, item)
-        else: bot.send_message(chat_id, "❌ لم يتم العثور عليه.")
+            bot.send_message(chat_id, f"✅ تم العثور على {len(items)} نتيجة:")
+            for item in items:
+                display_product_from_db(message, item)
+        else:
+            bot.send_message(chat_id, "❌ لم يتم العثور على نتائج مطابقة.")
+        
         user_states[chat_id] = None; return
 
+    # عرض المنتج عند الضغط على اسمه من القائمة
     with get_cursor() as cursor:
         cursor.execute("SELECT * FROM products WHERE name = %s", (message.text,))
         product = cursor.fetchone()
     if product: display_product_from_db(message, product)
 
+# --- معالج الضغط على الأزرار ---
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     chat_id = call.message.chat.id
