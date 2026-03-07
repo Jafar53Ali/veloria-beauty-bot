@@ -150,7 +150,7 @@ def show_edit_options(message):
         item = cursor.fetchone()
     if item:
         temp_product_data[message.chat.id] = list(item)
-        markup = types.InlineKeyboardMarkup(row_width=4)
+        markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
             types.InlineKeyboardButton("🏷️ الاسم", callback_data="edit_val_1"),
             types.InlineKeyboardButton("📝 الوصف", callback_data="edit_val_2"),
@@ -226,8 +226,8 @@ def list_products(message):
         cursor.execute("SELECT name FROM products")
         products = cursor.fetchall()
     if not products: bot.send_message(message.chat.id, "المتجر فارغ."); return
-    # تم تعديل row_width هنا ليكون 4 منتجات في الصف
-    markup = types.ReplyKeyboardMarkup(row_width=4, resize_keyboard=True)
+    # التعديل هنا ليعرض 3 منتجات في الصف الواحد
+    markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     for p in products: markup.add(types.KeyboardButton(p[0]))
     markup.add(types.KeyboardButton("🔙 الرجوع للقائمة الرئيسية"))
     bot.send_message(message.chat.id, "👇 اختاري منتجاً:", reply_markup=markup)
