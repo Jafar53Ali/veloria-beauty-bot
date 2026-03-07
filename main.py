@@ -29,13 +29,13 @@ bot = telebot.TeleBot(API_TOKEN)
 
 DATABASE_URL = "postgresql://neondb_owner:npg_GVlwd8kbrTz6@ep-red-king-ai5otk5k.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
-# قائمة معرفات الأدمنية (IDs)
-ADMIN_IDS = [1426422446, 1112769561] 
+# قائمة معرفات الأدمنية الأساسيين
+ADMIN_IDS = [8764366152, 1112769561, 8222606329] 
 
-# 💡 هام جداً: أضف هنا الـ IDs الرقمية للموظفين لكي تصلهم الطلبات في الخاص
-# يمكنك الحصول على الـ ID عبر بوت @userinfobot
+# 💡 ضعي هنا أرقام الـ ID الخاصة بالموظفات (Julie, Ryanaa, Trteel) 
+# لازم تجيبوها من @userinfobot عشان الإشعارات توصلهم في الخاص
 STAFF_CHAT_IDS = [
-    # أضف الـ IDs هنا، مثال: 12345678, 98765432
+    # مثال: 12345678, 98765432
 ]
 
 # قائمة موظفي الواتساب
@@ -44,7 +44,7 @@ WHATSAPP_STAFF = [
     "", "", "", "", "", "", "", "", "", ""          
 ]
 
-# قائمة موظفي التليجرام (للعرض في زر "تواصل معنا" وللتحقق من صلاحية اليوزرنيوم)
+# قائمة موظفي التليجرام
 TELEGRAM_STAFF = [
     "Julie_53",                                     
     "Ryanaa_53", "Trteel_53", "", "", "", "", "", "", "", "" 
@@ -82,7 +82,6 @@ def init_db():
 
 init_db()
 
-# --- دالة التحقق من الصلاحيات المطورة ---
 def is_admin(user_id, username=None):
     if user_id in ADMIN_IDS or user_id in STAFF_CHAT_IDS:
         return True
@@ -93,7 +92,7 @@ def is_admin(user_id, username=None):
             return True
     return False
 
-# --- 3. لوحة التحكم ---
+# --- لوحة التحكم ---
 @bot.message_handler(func=lambda message: message.text == "⚙️ لوحة التحكم")
 def admin_panel(message):
     if is_admin(message.from_user.id, message.from_user.username):
@@ -203,7 +202,7 @@ def final_save_edit(call):
         bot.answer_callback_query(call.id, "✅ تم الحفظ بنجاح!")
         bot.send_message(call.message.chat.id, "✅ تم تحديث بيانات المنتج بنجاح.")
 
-# --- 4. الوظائف الأساسية ---
+# --- الوظائف الأساسية ---
 @bot.message_handler(commands=['start'])
 def start(message):
     user_carts[message.chat.id] = []
@@ -225,10 +224,6 @@ def back_home(message): show_main_menu(message)
 def cart_handler(message):
     show_cart(message)
 
-@bot.message_handler(func=lambda message: message.text == "✨ فحص نوع البشرة (الخبير الآلي)")
-def skin_expert(message):
-    bot.send_message(message.chat.id, "🚧 هذه الميزة قيد التطوير حالياً، سيتم إطلاقها قريباً في تحديث ڤِلوريا القادم! 🌸")
-
 @bot.message_handler(func=lambda message: message.text == "☎️ تواصل مع المبيعات")
 def contact_sales(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -240,12 +235,6 @@ def contact_sales(message):
         if phone.strip():
             markup.add(types.InlineKeyboardButton(f"🟢 واتساب {i+1}", url=f"https://wa.me/{phone}"))
     bot.send_message(message.chat.id, "فريق المبيعات جاهز لخدمتك:", reply_markup=markup)
-
-@bot.message_handler(func=lambda message: message.text == "👨‍💻 مطور النظام")
-def contact_dev(message):
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("💬 مراسلة المطور", url="https://t.me/Gafar53_bot"))
-    bot.send_message(message.chat.id, "للاستفسارات التقنية وتطوير الأنظمة:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "🛍️ تصفح المنتجات")
 def list_products(message):
@@ -261,12 +250,7 @@ def list_products(message):
     markup.row(types.KeyboardButton("🔙 الرجوع للقائمة الرئيسية"))
     bot.send_message(message.chat.id, "👇 اختاري منتجاً:", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text == "🔍 بحث عن منتج")
-def search_prompt(message):
-    user_states[message.chat.id] = "searching"
-    bot.send_message(message.chat.id, "🔎 أرسلي اسم المنتج للبحث:")
-
-# --- 5. معالج الرسائل العام ---
+# --- معالج الرسائل العام والطلبات ---
 @bot.message_handler(content_types=['text', 'photo'])
 def handle_all_messages(message):
     chat_id = message.chat.id
@@ -289,9 +273,10 @@ def handle_all_messages(message):
         phone = message.text
         order = temp_orders.get(chat_id)
         if order:
+            # شكل الرسالة اللي حتظهر للموظفين
             final_summary = f"🔔 طلب جديد من البوت!\n\n👤 الزبون: {order['customer']}\n📞 هاتف: {phone}\n📋 الطلبات:\n{order['details']}\n💰 المجموع: {order['total']} ج.س"
             
-            # 🚀 إرسال الإشعار لجميع الأدمنية والموظفين في التليجرام
+            # 🚀 إرسال الإشعار لجميع الأدمنية والموظفين المسجلين في قائمة STAFF_CHAT_IDS
             all_receivers = set(ADMIN_IDS + STAFF_CHAT_IDS)
             for receiver_id in all_receivers:
                 try: 
