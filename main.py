@@ -204,6 +204,14 @@ def show_main_menu(message):
 @bot.message_handler(func=lambda message: message.text == "🔙 الرجوع للقائمة الرئيسية")
 def back_home(message): show_main_menu(message)
 
+# --- 🎯 معالجة زر مطور النظام (تمت الإضافة هنا) ---
+@bot.message_handler(func=lambda message: message.text == "👨‍💻 مطور النظام")
+def contact_developer(message):
+    markup = types.InlineKeyboardMarkup()
+    dev_button = types.InlineKeyboardButton("🔗 الدخول لبوت المطور", url="https://t.me/Gafar53_bot")
+    markup.add(dev_button)
+    bot.send_message(message.chat.id, "👨‍💻 يمكنك التواصل مع مطور النظام من خلال الرابط أدناه:", reply_markup=markup)
+
 @bot.message_handler(func=lambda message: message.text == "🛒 عرض السلة / إتمام الطلب")
 def cart_handler(message):
     show_cart(message)
