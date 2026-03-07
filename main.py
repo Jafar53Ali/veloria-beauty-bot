@@ -29,18 +29,25 @@ bot = telebot.TeleBot(API_TOKEN)
 
 DATABASE_URL = "postgresql://neondb_owner:npg_GVlwd8kbrTz6@ep-red-king-ai5otk5k.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
+# قائمة معرفات الأدمنية (IDs)
 ADMIN_IDS = [1426422446, 1112769561] 
 
-# قائمة موظفي الواتساب (الثلاثة الأوائل + 10 خانات احتياطية)
-WHATSAPP_STAFF = [
-    "249908787018", "249126335052", "249118739777", # الموظفين الحاليين
-    "", "", "", "", "", "", "", "", "", ""          # 10 خانات احتياطية
+# 💡 هام جداً: أضف هنا الـ IDs الرقمية للموظفين لكي تصلهم الطلبات في الخاص
+# يمكنك الحصول على الـ ID عبر بوت @userinfobot
+STAFF_CHAT_IDS = [
+    # أضف الـ IDs هنا، مثال: 12345678, 98765432
 ]
 
-# قائمة موظفي التليجرام (10 خانات احتياطية)
+# قائمة موظفي الواتساب
+WHATSAPP_STAFF = [
+    "249111327679", "249126335052", "249118739777", 
+    "", "", "", "", "", "", "", "", "", ""          
+]
+
+# قائمة موظفي التليجرام (للعرض في زر "تواصل معنا" وللتحقق من صلاحية اليوزرنيوم)
 TELEGRAM_STAFF = [
-    "Julie_53",                                     # الموظف الحالي
-    "Ryanaa_53", "Trteel_53", "", "", "", "", "", "", "", "" # 10 خانات احتياطية
+    "Julie_53",                                     
+    "Ryanaa_53", "Trteel_53", "", "", "", "", "", "", "", "" 
 ]
 
 user_carts = {} 
@@ -77,7 +84,7 @@ init_db()
 
 # --- دالة التحقق من الصلاحيات المطورة ---
 def is_admin(user_id, username=None):
-    if user_id in ADMIN_IDS:
+    if user_id in ADMIN_IDS or user_id in STAFF_CHAT_IDS:
         return True
     if username:
         clean_username = username.replace("@", "").strip()
@@ -160,7 +167,6 @@ def ask_edit_name(message):
 
 @bot.message_handler(func=lambda message: message.text.startswith("📝 تعديل: "))
 def show_edit_options(message):
-    # مسموح للموظفين أيضاً بالدخول هنا
     if is_admin(message.from_user.id, message.from_user.username):
         p_name = message.text.replace("📝 تعديل: ", "")
         with get_cursor() as cursor:
@@ -283,16 +289,22 @@ def handle_all_messages(message):
         phone = message.text
         order = temp_orders.get(chat_id)
         if order:
-            final_summary = f"طلب جديد:\n👤 الزبون: {order['customer']}\n📞 هاتف: {phone}\n📋 الطلبات:\n{order['details']}\n💰 المجموع: {order['total']} ج.س"
-            for admin_id in ADMIN_IDS:
-                try: bot.send_message(admin_id, f"🔔 طلب جديد!\n\n{final_summary}")
-                except: continue
+            final_summary = f"🔔 طلب جديد من البوت!\n\n👤 الزبون: {order['customer']}\n📞 هاتف: {phone}\n📋 الطلبات:\n{order['details']}\n💰 المجموع: {order['total']} ج.س"
+            
+            # 🚀 إرسال الإشعار لجميع الأدمنية والموظفين في التليجرام
+            all_receivers = set(ADMIN_IDS + STAFF_CHAT_IDS)
+            for receiver_id in all_receivers:
+                try: 
+                    bot.send_message(receiver_id, final_summary)
+                except Exception as e: 
+                    print(f"Could not send to {receiver_id}: {e}")
+            
             enc = urllib.parse.quote(final_summary)
             markup = types.InlineKeyboardMarkup(row_width=1)
             for i, p in enumerate(WHATSAPP_STAFF):
                 if p.strip():
                     markup.add(types.InlineKeyboardButton(f"🟢 إرسال عبر واتساب {i+1}", url=f"https://wa.me/{p}?text={enc}"))
-            bot.send_message(chat_id, "✅ تم تسجيل طلبك! أرسله للموظف:", reply_markup=markup)
+            bot.send_message(chat_id, "✅ تم تسجيل طلبك! أرسليه للموظف عبر الواتساب لتأكيد الحجز:", reply_markup=markup)
             user_carts[chat_id] = []; user_states[chat_id] = None
         return
 
