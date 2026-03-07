@@ -5,9 +5,9 @@ import urllib.parse
 import os
 from flask import Flask
 from threading import Thread
-import time  # إضافة بسيطة لضمان التوقيت
+import time
 
-# --- إعداد سيرفر لاستقبال طلبات الـ Cron-job (Keep-alive) ---
+# --- إعداد سيرفر Keep-alive ---
 app = Flask('')
 
 @app.route('/')
@@ -15,13 +15,12 @@ def home():
     return "I am alive! Veloria Beauty Bot is running."
 
 def run_flask():
-    # Render بيحدد المنفذ تلقائياً عبر متغير PORT أو نستخدم 8080 بناءً على طلبك
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run_flask)
-    t.daemon = True # تعديل لضمان استمرارية السيرفر مع البرنامج
+    t.daemon = True
     t.start()
 
 # 1. إعدادات البوت والمسؤولين
@@ -38,7 +37,6 @@ user_states = {}
 temp_orders = {} 
 temp_product_data = {} 
 
-# --- تحسين السرعة: إدارة الاتصال الدائم ---
 db_conn = None
 
 def get_db_connection():
@@ -70,7 +68,6 @@ def is_admin(user_id):
     return user_id in ADMIN_IDS
 
 # --- 3. لوحة التحكم ---
-
 @bot.message_handler(func=lambda message: message.text == "⚙️ لوحة التحكم")
 def admin_panel(message):
     if is_admin(message.from_user.id):
@@ -180,7 +177,6 @@ def final_save_edit(call):
         bot.send_message(call.message.chat.id, "✅ تم تحديث بيانات المنتج بنجاح.")
 
 # --- 4. الوظائف الأساسية ---
-
 @bot.message_handler(commands=['start'])
 def start(message):
     user_carts[message.chat.id] = []
@@ -224,12 +220,17 @@ def contact_dev(message):
 def list_products(message):
     with get_cursor() as cursor:
         cursor.execute("SELECT name FROM products")
-        products = cursor.fetchall()
-    if not products: bot.send_message(message.chat.id, "المتجر فارغ."); return
-    # التعديل هنا ليعرض 3 منتجات في الصف الواحد
+        products = [p[0] for p in cursor.fetchall()]
+    if not products: 
+        bot.send_message(message.chat.id, "المتجر فارغ.")
+        return
+    
+    # التعديل هنا: استخدام دالة add مع قائمة كاملة لتوزيعها 3 في الصف
     markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
-    for p in products: markup.add(types.KeyboardButton(p[0]))
-    markup.add(types.KeyboardButton("🔙 الرجوع للقائمة الرئيسية"))
+    buttons = [types.KeyboardButton(name) for name in products]
+    markup.add(*buttons) # علامة النجمة توزع الأزرار حسب الـ row_width المحدد
+    markup.row(types.KeyboardButton("🔙 الرجوع للقائمة الرئيسية"))
+    
     bot.send_message(message.chat.id, "👇 اختاري منتجاً:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "🔍 بحث عن منتج")
@@ -336,16 +337,10 @@ def display_product_from_db(message, item):
     try: bot.send_photo(message.chat.id, item[5], caption=cap, reply_markup=markup, parse_mode="Markdown")
     except: bot.send_message(message.chat.id, cap, reply_markup=markup, parse_mode="Markdown")
 
-# --- التعديل الذكي لمنع Render من إغلاق البوت ---
 if __name__ == "__main__":
-    # 1. تشغيل السيرفر المساعد أولاً لفتح المنفذ لـ Render
     keep_alive() 
     print("Keep-alive server is running on port 8080...")
-    
-    # 2. مهلة قصيرة لضمان استقرار السيرفر قبل بدء البوت
     time.sleep(2)
-    
-    # 3. تشغيل البوت في حلقة (Loop) لضمان عدم توقفه نهائياً
     while True:
         try:
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
