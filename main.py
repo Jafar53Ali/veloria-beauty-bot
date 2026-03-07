@@ -37,10 +37,10 @@ WHATSAPP_STAFF = [
     "", "", "", "", "", "", "", "", "", ""          # 10 خانات احتياطية
 ]
 
-# قائمة موظفي التليجرام (10 خانات احتياطية - ضع المعرف بدون @ مثل: Julie_53)
+# قائمة موظفي التليجرام (10 خانات احتياطية)
 TELEGRAM_STAFF = [
     "Julie_53",                                     # الموظف الحالي
-    "@Ryanaa_53", "", "", "", "", "", "", "", "", ""          # 10 خانات احتياطية
+    "Ryanaa_53", "", "", "", "", "", "", "", "", "" # 10 خانات احتياطية
 ]
 
 user_carts = {} 
@@ -75,13 +75,21 @@ def init_db():
 
 init_db()
 
-def is_admin(user_id):
-    return user_id in ADMIN_IDS
+# --- دالة التحقق من الصلاحيات المطورة ---
+def is_admin(user_id, username=None):
+    if user_id in ADMIN_IDS:
+        return True
+    if username:
+        clean_username = username.replace("@", "").strip()
+        clean_staff_list = [name.replace("@", "").strip() for name in TELEGRAM_STAFF if name.strip()]
+        if clean_username in clean_staff_list:
+            return True
+    return False
 
 # --- 3. لوحة التحكم ---
 @bot.message_handler(func=lambda message: message.text == "⚙️ لوحة التحكم")
 def admin_panel(message):
-    if is_admin(message.from_user.id):
+    if is_admin(message.from_user.id, message.from_user.username):
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
         markup.add(types.KeyboardButton("➕ إضافة منتج"), types.KeyboardButton("🗑️ حذف منتج"))
         markup.add(types.KeyboardButton("✏️ تعديل منتج"), types.KeyboardButton("🔙 الرجوع للقائمة الرئيسية"))
@@ -89,7 +97,7 @@ def admin_panel(message):
 
 @bot.message_handler(func=lambda message: message.text == "➕ إضافة منتج")
 def ask_add(message):
-    if is_admin(message.from_user.id):
+    if is_admin(message.from_user.id, message.from_user.username):
         msg = bot.send_message(message.chat.id, "أرسل البيانات بالترتيب:\nالاسم | الوصف | السعر | الحالة")
         bot.register_next_step_handler(msg, ask_for_photo)
 
@@ -119,7 +127,7 @@ def save_product_final(message):
 
 @bot.message_handler(func=lambda message: message.text == "🗑️ حذف منتج")
 def ask_delete(message):
-    if is_admin(message.from_user.id):
+    if is_admin(message.from_user.id, message.from_user.username):
         with get_cursor() as cursor:
             cursor.execute("SELECT name FROM products")
             prods = cursor.fetchall()
@@ -131,7 +139,7 @@ def ask_delete(message):
 
 @bot.message_handler(func=lambda message: message.text.startswith("❌ حذف: "))
 def confirm_delete(message):
-    if is_admin(message.from_user.id):
+    if is_admin(message.from_user.id, message.from_user.username):
         p_name = message.text.replace("❌ حذف: ", "")
         with get_cursor() as cursor:
             cursor.execute("DELETE FROM products WHERE name = %s", (p_name,))
@@ -140,7 +148,7 @@ def confirm_delete(message):
 
 @bot.message_handler(func=lambda message: message.text == "✏️ تعديل منتج")
 def ask_edit_name(message):
-    if is_admin(message.from_user.id):
+    if is_admin(message.from_user.id, message.from_user.username):
         with get_cursor() as cursor:
             cursor.execute("SELECT name FROM products")
             prods = cursor.fetchall()
@@ -152,23 +160,25 @@ def ask_edit_name(message):
 
 @bot.message_handler(func=lambda message: message.text.startswith("📝 تعديل: "))
 def show_edit_options(message):
-    p_name = message.text.replace("📝 تعديل: ", "")
-    with get_cursor() as cursor:
-        cursor.execute("SELECT * FROM products WHERE name = %s", (p_name,))
-        item = cursor.fetchone()
-    if item:
-        temp_product_data[message.chat.id] = list(item)
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            types.InlineKeyboardButton("🏷️ الاسم", callback_data="edit_val_1"),
-            types.InlineKeyboardButton("📝 الوصف", callback_data="edit_val_2"),
-            types.InlineKeyboardButton("💰 السعر", callback_data="edit_val_3"),
-            types.InlineKeyboardButton("✅ الحالة", callback_data="edit_val_4"),
-            types.InlineKeyboardButton("🖼️ الصورة", callback_data="edit_val_5"),
-            types.InlineKeyboardButton("💾 حفظ التعديلات", callback_data="save_edits")
-        )
-        info = f"🛠️ **تعديل المنتج:** {item[1]}\n\n1. الاسم: {item[1]}\n2. الوصف: {item[2]}\n3. السعر: {item[3]}\n4. الحالة: {item[4]}"
-        bot.send_message(message.chat.id, info, reply_markup=markup, parse_mode="Markdown")
+    # مسموح للموظفين أيضاً بالدخول هنا
+    if is_admin(message.from_user.id, message.from_user.username):
+        p_name = message.text.replace("📝 تعديل: ", "")
+        with get_cursor() as cursor:
+            cursor.execute("SELECT * FROM products WHERE name = %s", (p_name,))
+            item = cursor.fetchone()
+        if item:
+            temp_product_data[message.chat.id] = list(item)
+            markup = types.InlineKeyboardMarkup(row_width=2)
+            markup.add(
+                types.InlineKeyboardButton("🏷️ الاسم", callback_data="edit_val_1"),
+                types.InlineKeyboardButton("📝 الوصف", callback_data="edit_val_2"),
+                types.InlineKeyboardButton("💰 السعر", callback_data="edit_val_3"),
+                types.InlineKeyboardButton("✅ الحالة", callback_data="edit_val_4"),
+                types.InlineKeyboardButton("🖼️ الصورة", callback_data="edit_val_5"),
+                types.InlineKeyboardButton("💾 حفظ التعديلات", callback_data="save_edits")
+            )
+            info = f"🛠️ **تعديل المنتج:** {item[1]}\n\n1. الاسم: {item[1]}\n2. الوصف: {item[2]}\n3. السعر: {item[3]}\n4. الحالة: {item[4]}"
+            bot.send_message(message.chat.id, info, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("edit_val_"))
 def prompt_edit_field(call):
@@ -198,7 +208,8 @@ def show_main_menu(message):
     markup.add(types.KeyboardButton("🛍️ تصفح المنتجات"), types.KeyboardButton("🔍 بحث عن منتج"))
     markup.add(types.KeyboardButton("✨ فحص نوع البشرة (الخبير الآلي)"), types.KeyboardButton("🛒 عرض السلة / إتمام الطلب"))
     markup.add(types.KeyboardButton("☎️ تواصل مع المبيعات"), types.KeyboardButton("👨‍💻 مطور النظام"))
-    if is_admin(message.from_user.id): markup.add(types.KeyboardButton("⚙️ لوحة التحكم"))
+    if is_admin(message.from_user.id, message.from_user.username): 
+        markup.add(types.KeyboardButton("⚙️ لوحة التحكم"))
     bot.send_message(message.chat.id, "✨ مرحباً بكِ في ڤِلوريا بيوتي ✨", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "🔙 الرجوع للقائمة الرئيسية")
@@ -215,17 +226,13 @@ def skin_expert(message):
 @bot.message_handler(func=lambda message: message.text == "☎️ تواصل مع المبيعات")
 def contact_sales(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
-    
-    # إضافة موظفي التليجرام الموجودين في القائمة تلقائياً
     for username in TELEGRAM_STAFF:
         if username.strip():
-            markup.add(types.InlineKeyboardButton(f"👩‍💼 تليجرام (@{username})", url=f"https://t.me/{username}"))
-            
-    # إضافة موظفي الواتساب الموجودين في القائمة تلقائياً
+            clean_name = username.replace("@", "")
+            markup.add(types.InlineKeyboardButton(f"👩‍💼 تليجرام (@{clean_name})", url=f"https://t.me/{clean_name}"))
     for i, phone in enumerate(WHATSAPP_STAFF):
         if phone.strip():
             markup.add(types.InlineKeyboardButton(f"🟢 واتساب {i+1}", url=f"https://wa.me/{phone}"))
-            
     bot.send_message(message.chat.id, "فريق المبيعات جاهز لخدمتك:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "👨‍💻 مطور النظام")
@@ -242,7 +249,6 @@ def list_products(message):
     if not products: 
         bot.send_message(message.chat.id, "المتجر فارغ.")
         return
-    
     markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     buttons = [types.KeyboardButton(name) for name in products]
     markup.add(*buttons)
@@ -281,15 +287,11 @@ def handle_all_messages(message):
             for admin_id in ADMIN_IDS:
                 try: bot.send_message(admin_id, f"🔔 طلب جديد!\n\n{final_summary}")
                 except: continue
-            
             enc = urllib.parse.quote(final_summary)
             markup = types.InlineKeyboardMarkup(row_width=1)
-            
-            # عرض روابط الواتساب المتاحة لإرسال الطلب إليها
             for i, p in enumerate(WHATSAPP_STAFF):
                 if p.strip():
                     markup.add(types.InlineKeyboardButton(f"🟢 إرسال عبر واتساب {i+1}", url=f"https://wa.me/{p}?text={enc}"))
-            
             bot.send_message(chat_id, "✅ تم تسجيل طلبك! أرسله للموظف:", reply_markup=markup)
             user_carts[chat_id] = []; user_states[chat_id] = None
         return
