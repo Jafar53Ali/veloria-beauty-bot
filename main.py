@@ -30,7 +30,18 @@ bot = telebot.TeleBot(API_TOKEN)
 DATABASE_URL = "postgresql://neondb_owner:npg_GVlwd8kbrTz6@ep-red-king-ai5otk5k.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
 ADMIN_IDS = [1426422446, 1112769561] 
-WHATSAPP_STAFF = ["249908787018", "249126335052", "249118739777"]
+
+# قائمة موظفي الواتساب (الثلاثة الأوائل + 10 خانات احتياطية)
+WHATSAPP_STAFF = [
+    "249908787018", "249126335052", "249118739777", # الموظفين الحاليين
+    "", "", "", "", "", "", "", "", "", ""          # 10 خانات احتياطية
+]
+
+# قائمة موظفي التليجرام (10 خانات احتياطية - ضع المعرف بدون @ مثل: Julie_53)
+TELEGRAM_STAFF = [
+    "Julie_53",                                     # الموظف الحالي
+    "", "", "", "", "", "", "", "", "", ""          # 10 خانات احتياطية
+]
 
 user_carts = {} 
 user_states = {} 
@@ -204,10 +215,17 @@ def skin_expert(message):
 @bot.message_handler(func=lambda message: message.text == "☎️ تواصل مع المبيعات")
 def contact_sales(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(types.InlineKeyboardButton("👩‍💼 تليجرام", url="https://t.me/Julie_53"),
-               types.InlineKeyboardButton("🟢 واتساب 1", url=f"https://wa.me/{WHATSAPP_STAFF[0]}"),
-               types.InlineKeyboardButton("🟢 واتساب 2", url=f"https://wa.me/{WHATSAPP_STAFF[1]}"),
-               types.InlineKeyboardButton("🟢 واتساب 3", url=f"https://wa.me/{WHATSAPP_STAFF[2]}"))
+    
+    # إضافة موظفي التليجرام الموجودين في القائمة تلقائياً
+    for username in TELEGRAM_STAFF:
+        if username.strip():
+            markup.add(types.InlineKeyboardButton(f"👩‍💼 تليجرام (@{username})", url=f"https://t.me/{username}"))
+            
+    # إضافة موظفي الواتساب الموجودين في القائمة تلقائياً
+    for i, phone in enumerate(WHATSAPP_STAFF):
+        if phone.strip():
+            markup.add(types.InlineKeyboardButton(f"🟢 واتساب {i+1}", url=f"https://wa.me/{phone}"))
+            
     bot.send_message(message.chat.id, "فريق المبيعات جاهز لخدمتك:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "👨‍💻 مطور النظام")
@@ -225,12 +243,10 @@ def list_products(message):
         bot.send_message(message.chat.id, "المتجر فارغ.")
         return
     
-    # التعديل هنا: استخدام دالة add مع قائمة كاملة لتوزيعها 3 في الصف
     markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     buttons = [types.KeyboardButton(name) for name in products]
-    markup.add(*buttons) # علامة النجمة توزع الأزرار حسب الـ row_width المحدد
+    markup.add(*buttons)
     markup.row(types.KeyboardButton("🔙 الرجوع للقائمة الرئيسية"))
-    
     bot.send_message(message.chat.id, "👇 اختاري منتجاً:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "🔍 بحث عن منتج")
@@ -265,11 +281,15 @@ def handle_all_messages(message):
             for admin_id in ADMIN_IDS:
                 try: bot.send_message(admin_id, f"🔔 طلب جديد!\n\n{final_summary}")
                 except: continue
+            
             enc = urllib.parse.quote(final_summary)
             markup = types.InlineKeyboardMarkup(row_width=1)
-            markup.add(types.InlineKeyboardButton("🟢 واتساب (عمران)", url=f"https://wa.me/{WHATSAPP_STAFF[0]}?text={enc}"),
-                       types.InlineKeyboardButton("🟢 واتساب (جعفر)", url=f"https://wa.me/{WHATSAPP_STAFF[1]}?text={enc}"),
-                       types.InlineKeyboardButton("🟢 واتساب (ريان)", url=f"https://wa.me/{WHATSAPP_STAFF[2]}?text={enc}"))
+            
+            # عرض روابط الواتساب المتاحة لإرسال الطلب إليها
+            for i, p in enumerate(WHATSAPP_STAFF):
+                if p.strip():
+                    markup.add(types.InlineKeyboardButton(f"🟢 إرسال عبر واتساب {i+1}", url=f"https://wa.me/{p}?text={enc}"))
+            
             bot.send_message(chat_id, "✅ تم تسجيل طلبك! أرسله للموظف:", reply_markup=markup)
             user_carts[chat_id] = []; user_states[chat_id] = None
         return
