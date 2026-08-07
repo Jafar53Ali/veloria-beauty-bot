@@ -29,7 +29,7 @@ bot = telebot.TeleBot(API_TOKEN)
 
 DATABASE_URL = "postgresql://neondb_owner:npg_GVlwd8kbrTz6@ep-red-king-ai5otk5k.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
-ADMIN_IDS = [8764366152, 1112769561, 8222606329] 
+ADMIN_IDS = [8764366152, 1112769561, 8222606329, 8600634447] 
 STAFF_CHAT_IDS = []
 WHATSAPP_STAFF = ["249111327679", "249126335052", "249118739777", "", "", "", "", "", "", "", "", "", ""]
 TELEGRAM_STAFF = ["Julie_53", "Ryanaa_53", "Trteel_53", "", "", "", "", "", "", "", ""]
