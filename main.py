@@ -322,14 +322,21 @@ def handle_all_messages(message):
 def handle_callbacks(call):
     chat_id = call.message.chat.id
     if call.data.startswith("add_"):
-        p_name = call.data.replace("add_", "")
+        try:
+            p_id = int(call.data.replace("add_", ""))
+        except ValueError:
+            bot.answer_callback_query(call.id, "❌ حدث خطأ، حاول مرة أخرى.")
+            return
         with get_cursor() as cur:
-            cur.execute("SELECT price FROM products WHERE name = %s", (p_name,))
-            price = cur.fetchone()
-        if price:
+            cur.execute("SELECT name, price FROM products WHERE id = %s", (p_id,))
+            row = cur.fetchone()
+        if row:
+            p_name, price = row[0], row[1]
             if chat_id not in user_carts: user_carts[chat_id] = []
-            user_carts[chat_id].append({'name': p_name, 'price': price[0]})
+            user_carts[chat_id].append({'name': p_name, 'price': price})
             bot.answer_callback_query(call.id, f"✅ تمت إضافة {p_name}")
+        else:
+            bot.answer_callback_query(call.id, "❌ المنتج غير موجود.")
     elif call.data.startswith("remove_"):
         idx = int(call.data.split("_")[1])
         if chat_id in user_carts and len(user_carts[chat_id]) > idx:
@@ -362,7 +369,7 @@ def show_cart(message):
 def display_product_from_db(message, item):
     cap = f"🌸 **المنتج:** {item[1]}\n\n📝 **الوصف:** {item[2]}\n💰 **السعر:** {item[3]} ج.س\n✅ **الحالة:** {item[4]}"
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("➕ إضافة للسلة", callback_data=f"add_{item[1]}"))
+    markup.add(types.InlineKeyboardButton("➕ إضافة للسلة", callback_data=f"add_{item[0]}"))
     try: bot.send_photo(message.chat.id, item[5], caption=cap, reply_markup=markup, parse_mode="Markdown")
     except: bot.send_message(message.chat.id, cap, reply_markup=markup, parse_mode="Markdown")
 
