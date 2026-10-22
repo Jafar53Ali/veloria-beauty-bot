@@ -254,13 +254,13 @@ def handle_callbacks(call):
     if call.data.startswith("add_"):
         p_id = call.data.replace("add_", "")
         with get_cursor() as cur:
-            cur.execute("SELECT name, price FROM products WHERE id = %s OR name = %s", (p_id if p_id.isdigit() else -1, p_id))
+            cur.execute("SELECT name, price FROM products WHERE id = %s OR name = %s", (int(p_id) if p_id.isdigit() else -1, p_id))
             prod = cur.fetchone()
         if prod:
             p_name, price = prod[0], prod[1]
             if chat_id not in user_carts: user_carts[chat_id] = []
             user_carts[chat_id].append({'name': p_name, 'price': price})
-            bot.answer_callback_query(call.id, f"✅ تمت إضافة {p_name}")
+            bot.answer_callback_query(call.id, f"✅ تمت إضافة {p_name} للسلة!")
         else:
             bot.answer_callback_query(call.id, "❌ تعذر العثور على المنتج")
     elif call.data.startswith("remove_"):
@@ -269,6 +269,7 @@ def handle_callbacks(call):
             user_carts[chat_id].pop(idx)
             bot.delete_message(chat_id, call.message.message_id)
             show_cart(call.message)
+        bot.answer_callback_query(call.id, "🗑️ تم الحذف من السلة")
     elif call.data == "confirm_order":
         cart = user_carts.get(chat_id, [])
         if cart:
@@ -278,6 +279,7 @@ def handle_callbacks(call):
             temp_orders[chat_id] = {"details": details, "total": total, "customer": user}
             user_states[chat_id] = "waiting_phone"
             bot.edit_message_text("📱 أرسلي رقم هاتف الواتساب الخاص بكِ:", chat_id, call.message.message_id)
+        bot.answer_callback_query(call.id)
 
 def show_cart(message):
     cart = user_carts.get(message.chat.id, [])
