@@ -63,8 +63,38 @@ def init_db():
                           (id SERIAL PRIMARY KEY, 
                            name TEXT, description TEXT, price INTEGER, 
                            availability TEXT, image_url TEXT)''')
+        # ✅ جدول جديد لتخزين السلة بشكل دائم (يحل مشكلة إعادة التشغيل)
+        cursor.execute('''CREATE TABLE IF NOT EXISTS carts
+                          (id SERIAL PRIMARY KEY,
+                           chat_id BIGINT,
+                           product_id INTEGER,
+                           product_name TEXT,
+                           price INTEGER)''')
 
 init_db()
+
+# ✅ دوال مساعدة للسلة (تعمل مع قاعدة البيانات)
+def cart_load(chat_id):
+    with get_cursor() as cur:
+        cur.execute("SELECT product_id, product_name, price FROM carts WHERE chat_id = %s ORDER BY id", (chat_id,))
+        rows = cur.fetchall()
+    return [{'product_id': r[0], 'name': r[1], 'price': r[2]} for r in rows]
+
+def cart_add(chat_id, product_id, product_name, price):
+    with get_cursor() as cur:
+        cur.execute("INSERT INTO carts (chat_id, product_id, product_name, price) VALUES (%s,%s,%s,%s)",
+                    (chat_id, product_id, product_name, price))
+
+def cart_clear(chat_id):
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM carts WHERE chat_id = %s", (chat_id,))
+
+def cart_remove_at(chat_id, index):
+    with get_cursor() as cur:
+        cur.execute("SELECT id FROM carts WHERE chat_id = %s ORDER BY id", (chat_id,))
+        rows = cur.fetchall()
+        if index < len(rows):
+            cur.execute("DELETE FROM carts WHERE id = %s", (rows[index][0],))
 
 def is_admin(user_id, username=None):
     if user_id in ADMIN_IDS or user_id in STAFF_CHAT_IDS:
@@ -189,7 +219,7 @@ def final_save_edit(call):
 # --- الوظائف الأساسية ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    user_carts[message.chat.id] = []
+    cart_clear(message.chat.id)  # سلة جديدة عند /start
     show_main_menu(message)
 
 def show_main_menu(message):
@@ -284,7 +314,7 @@ def handle_all_messages(message):
                 if p.strip():
                     markup.add(types.InlineKeyboardButton(f"🟢 إرسال عبر واتساب {i+1}", url=f"https://wa.me/{p}?text={enc}"))
             bot.send_message(chat_id, "✅ تم تسجيل طلبك! أرسليه للموظف عبر الواتساب لتأكيد الحجز:", reply_markup=markup)
-            user_carts[chat_id] = []; user_states[chat_id] = None
+            cart_clear(chat_id); user_states[chat_id] = None
         return
 
     # 🔍 تطوير آلية البحث الذكي (الاسم والوصف)
@@ -332,19 +362,18 @@ def handle_callbacks(call):
             row = cur.fetchone()
         if row:
             p_name, price = row[0], row[1]
-            if chat_id not in user_carts: user_carts[chat_id] = []
-            user_carts[chat_id].append({'name': p_name, 'price': price})
+            cart_add(chat_id, p_id, p_name, price)  # ✅ حفظ في قاعدة البيانات
             bot.answer_callback_query(call.id, f"✅ تمت إضافة {p_name}")
         else:
             bot.answer_callback_query(call.id, "❌ المنتج غير موجود.")
     elif call.data.startswith("remove_"):
         idx = int(call.data.split("_")[1])
-        if chat_id in user_carts and len(user_carts[chat_id]) > idx:
-            user_carts[chat_id].pop(idx)
-            bot.delete_message(chat_id, call.message.message_id)
-            show_cart(call.message)
+        cart_remove_at(chat_id, idx)  # ✅ حذف من قاعدة البيانات
+        try: bot.delete_message(chat_id, call.message.message_id)
+        except: pass
+        show_cart(call.message)
     elif call.data == "confirm_order":
-        cart = user_carts.get(chat_id, [])
+        cart = cart_load(chat_id)  # ✅ قراءة من قاعدة البيانات
         if cart:
             total = sum(item['price'] for item in cart)
             details = "\n".join([f"- {i['name']} ({i['price']})" for i in cart])
@@ -352,9 +381,11 @@ def handle_callbacks(call):
             temp_orders[chat_id] = {"details": details, "total": total, "customer": user}
             user_states[chat_id] = "waiting_phone"
             bot.edit_message_text("📱 أرسلي رقم هاتف الواتساب الخاص بكِ:", chat_id, call.message.message_id)
+        else:
+            bot.answer_callback_query(call.id, "السلة فارغة!")
 
 def show_cart(message):
-    cart = user_carts.get(message.chat.id, [])
+    cart = cart_load(message.chat.id)  # ✅ قراءة من قاعدة البيانات
     if not cart: bot.send_message(message.chat.id, "سلتك فارغة حالياً. 🌸"); return
     total = sum(item['price'] for item in cart)
     items_text = "🛍️ **محتويات سلتك:**\n\n"
