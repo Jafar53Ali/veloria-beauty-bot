@@ -63,38 +63,8 @@ def init_db():
                           (id SERIAL PRIMARY KEY, 
                            name TEXT, description TEXT, price INTEGER, 
                            availability TEXT, image_url TEXT)''')
-        # ✅ جدول جديد لتخزين السلة بشكل دائم (يحل مشكلة إعادة التشغيل)
-        cursor.execute('''CREATE TABLE IF NOT EXISTS carts
-                          (id SERIAL PRIMARY KEY,
-                           chat_id BIGINT,
-                           product_id INTEGER,
-                           product_name TEXT,
-                           price INTEGER)''')
 
 init_db()
-
-# ✅ دوال مساعدة للسلة (تعمل مع قاعدة البيانات)
-def cart_load(chat_id):
-    with get_cursor() as cur:
-        cur.execute("SELECT product_id, product_name, price FROM carts WHERE chat_id = %s ORDER BY id", (chat_id,))
-        rows = cur.fetchall()
-    return [{'product_id': r[0], 'name': r[1], 'price': r[2]} for r in rows]
-
-def cart_add(chat_id, product_id, product_name, price):
-    with get_cursor() as cur:
-        cur.execute("INSERT INTO carts (chat_id, product_id, product_name, price) VALUES (%s,%s,%s,%s)",
-                    (chat_id, product_id, product_name, price))
-
-def cart_clear(chat_id):
-    with get_cursor() as cur:
-        cur.execute("DELETE FROM carts WHERE chat_id = %s", (chat_id,))
-
-def cart_remove_at(chat_id, index):
-    with get_cursor() as cur:
-        cur.execute("SELECT id FROM carts WHERE chat_id = %s ORDER BY id", (chat_id,))
-        rows = cur.fetchall()
-        if index < len(rows):
-            cur.execute("DELETE FROM carts WHERE id = %s", (rows[index][0],))
 
 def is_admin(user_id, username=None):
     if user_id in ADMIN_IDS or user_id in STAFF_CHAT_IDS:
@@ -219,7 +189,7 @@ def final_save_edit(call):
 # --- الوظائف الأساسية ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    cart_clear(message.chat.id)  # سلة جديدة عند /start
+    user_carts[message.chat.id] = []
     show_main_menu(message)
 
 def show_main_menu(message):
@@ -234,7 +204,7 @@ def show_main_menu(message):
 @bot.message_handler(func=lambda message: message.text == "🔙 الرجوع للقائمة الرئيسية")
 def back_home(message): show_main_menu(message)
 
-# --- 🎯 معالجة زر مطور النظام (تمت الإضافة هنا) ---
+# --- 🎯 معالجة زر مطور النظام ---
 @bot.message_handler(func=lambda message: message.text == "👨‍💻 مطور النظام")
 def contact_developer(message):
     markup = types.InlineKeyboardMarkup()
@@ -277,7 +247,59 @@ def search_prompt(message):
     user_states[message.chat.id] = "searching"
     bot.send_message(message.chat.id, "🔎 أرسلي 3 حروف على الأقل للبحث في الاسم أو الوصف:")
 
-# --- 🚀 تطوير آلية البحث في معالج الرسائل العام ---
+# --- معالج الضغط على الأزرار التفاعلية (Callback Queries) ---
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    chat_id = call.message.chat.id
+    if call.data.startswith("add_"):
+        p_id = call.data.replace("add_", "")
+        with get_cursor() as cur:
+            cur.execute("SELECT name, price FROM products WHERE id = %s OR name = %s", (p_id if p_id.isdigit() else -1, p_id))
+            prod = cur.fetchone()
+        if prod:
+            p_name, price = prod[0], prod[1]
+            if chat_id not in user_carts: user_carts[chat_id] = []
+            user_carts[chat_id].append({'name': p_name, 'price': price})
+            bot.answer_callback_query(call.id, f"✅ تمت إضافة {p_name}")
+        else:
+            bot.answer_callback_query(call.id, "❌ تعذر العثور على المنتج")
+    elif call.data.startswith("remove_"):
+        idx = int(call.data.split("_")[1])
+        if chat_id in user_carts and len(user_carts[chat_id]) > idx:
+            user_carts[chat_id].pop(idx)
+            bot.delete_message(chat_id, call.message.message_id)
+            show_cart(call.message)
+    elif call.data == "confirm_order":
+        cart = user_carts.get(chat_id, [])
+        if cart:
+            total = sum(item['price'] for item in cart)
+            details = "\n".join([f"- {i['name']} ({i['price']})" for i in cart])
+            user = f"@{call.from_user.username}" if call.from_user.username else call.from_user.first_name
+            temp_orders[chat_id] = {"details": details, "total": total, "customer": user}
+            user_states[chat_id] = "waiting_phone"
+            bot.edit_message_text("📱 أرسلي رقم هاتف الواتساب الخاص بكِ:", chat_id, call.message.message_id)
+
+def show_cart(message):
+    cart = user_carts.get(message.chat.id, [])
+    if not cart: bot.send_message(message.chat.id, "سلتك فارغة حالياً. 🌸"); return
+    total = sum(item['price'] for item in cart)
+    items_text = "🛍️ **محتويات سلتك:**\n\n"
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for index, item in enumerate(cart):
+        items_text += f"{index+1}. {item['name']} ({item['price']} ج.س)\n"
+        markup.add(types.InlineKeyboardButton(f"❌ حذف {item['name']}", callback_data=f"remove_{index}"))
+    items_text += f"\n💰 **الإجمالي: {total} ج.س**"
+    markup.add(types.InlineKeyboardButton("✅ تأكيد وإرسال الطلب", callback_data="confirm_order"))
+    bot.send_message(message.chat.id, items_text, reply_markup=markup, parse_mode="Markdown")
+
+def display_product_from_db(message, item):
+    cap = f"🌸 **المنتج:** {item[1]}\n\n📝 **الوصف:** {item[2]}\n💰 **السعر:** {item[3]} ج.س\n✅ **الحالة:** {item[4]}"
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("➕ إضافة للسلة", callback_data=f"add_{item[0]}"))
+    try: bot.send_photo(message.chat.id, item[5], caption=cap, reply_markup=markup, parse_mode="Markdown")
+    except: bot.send_message(message.chat.id, cap, reply_markup=markup, parse_mode="Markdown")
+
+# --- معالج الرسائل العام النصية والصور (يجب أن يكون في نهاية الكود دائماً) ---
 @bot.message_handler(content_types=['text', 'photo'])
 def handle_all_messages(message):
     chat_id = message.chat.id
@@ -314,7 +336,7 @@ def handle_all_messages(message):
                 if p.strip():
                     markup.add(types.InlineKeyboardButton(f"🟢 إرسال عبر واتساب {i+1}", url=f"https://wa.me/{p}?text={enc}"))
             bot.send_message(chat_id, "✅ تم تسجيل طلبك! أرسليه للموظف عبر الواتساب لتأكيد الحجز:", reply_markup=markup)
-            cart_clear(chat_id); user_states[chat_id] = None
+            user_carts[chat_id] = []; user_states[chat_id] = None
         return
 
     # 🔍 تطوير آلية البحث الذكي (الاسم والوصف)
@@ -342,67 +364,11 @@ def handle_all_messages(message):
         user_states[chat_id] = None; return
 
     # عرض المنتج عند الضغط على اسمه من القائمة
-    with get_cursor() as cursor:
-        cursor.execute("SELECT * FROM products WHERE name = %s", (message.text,))
-        product = cursor.fetchone()
-    if product: display_product_from_db(message, product)
-
-# --- معالج الضغط على الأزرار ---
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callbacks(call):
-    chat_id = call.message.chat.id
-    if call.data.startswith("add_"):
-        try:
-            p_id = int(call.data.replace("add_", ""))
-        except ValueError:
-            bot.answer_callback_query(call.id, "❌ حدث خطأ، حاول مرة أخرى.")
-            return
-        with get_cursor() as cur:
-            cur.execute("SELECT name, price FROM products WHERE id = %s", (p_id,))
-            row = cur.fetchone()
-        if row:
-            p_name, price = row[0], row[1]
-            cart_add(chat_id, p_id, p_name, price)  # ✅ حفظ في قاعدة البيانات
-            bot.answer_callback_query(call.id, f"✅ تمت إضافة {p_name}")
-        else:
-            bot.answer_callback_query(call.id, "❌ المنتج غير موجود.")
-    elif call.data.startswith("remove_"):
-        idx = int(call.data.split("_")[1])
-        cart_remove_at(chat_id, idx)  # ✅ حذف من قاعدة البيانات
-        try: bot.delete_message(chat_id, call.message.message_id)
-        except: pass
-        show_cart(call.message)
-    elif call.data == "confirm_order":
-        cart = cart_load(chat_id)  # ✅ قراءة من قاعدة البيانات
-        if cart:
-            total = sum(item['price'] for item in cart)
-            details = "\n".join([f"- {i['name']} ({i['price']})" for i in cart])
-            user = f"@{call.from_user.username}" if call.from_user.username else call.from_user.first_name
-            temp_orders[chat_id] = {"details": details, "total": total, "customer": user}
-            user_states[chat_id] = "waiting_phone"
-            bot.edit_message_text("📱 أرسلي رقم هاتف الواتساب الخاص بكِ:", chat_id, call.message.message_id)
-        else:
-            bot.answer_callback_query(call.id, "السلة فارغة!")
-
-def show_cart(message):
-    cart = cart_load(message.chat.id)  # ✅ قراءة من قاعدة البيانات
-    if not cart: bot.send_message(message.chat.id, "سلتك فارغة حالياً. 🌸"); return
-    total = sum(item['price'] for item in cart)
-    items_text = "🛍️ **محتويات سلتك:**\n\n"
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for index, item in enumerate(cart):
-        items_text += f"{index+1}. {item['name']} ({item['price']} ج.س)\n"
-        markup.add(types.InlineKeyboardButton(f"❌ حذف {item['name']}", callback_data=f"remove_{index}"))
-    items_text += f"\n💰 **الإجمالي: {total} ج.س**"
-    markup.add(types.InlineKeyboardButton("✅ تأكيد وإرسال الطلب", callback_data="confirm_order"))
-    bot.send_message(message.chat.id, items_text, reply_markup=markup, parse_mode="Markdown")
-
-def display_product_from_db(message, item):
-    cap = f"🌸 **المنتج:** {item[1]}\n\n📝 **الوصف:** {item[2]}\n💰 **السعر:** {item[3]} ج.س\n✅ **الحالة:** {item[4]}"
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("➕ إضافة للسلة", callback_data=f"add_{item[0]}"))
-    try: bot.send_photo(message.chat.id, item[5], caption=cap, reply_markup=markup, parse_mode="Markdown")
-    except: bot.send_message(message.chat.id, cap, reply_markup=markup, parse_mode="Markdown")
+    if message.content_type == 'text':
+        with get_cursor() as cursor:
+            cursor.execute("SELECT * FROM products WHERE name = %s", (message.text,))
+            product = cursor.fetchone()
+        if product: display_product_from_db(message, product)
 
 if __name__ == "__main__":
     keep_alive() 
